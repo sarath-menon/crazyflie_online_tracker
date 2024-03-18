@@ -1,2 +1,0 @@
-FlyingVehicleState[] crazyflies
-UnlabeledMarker[] markers
