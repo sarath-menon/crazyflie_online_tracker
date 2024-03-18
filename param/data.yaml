@@ -1,0 +1,51 @@
+# Parameters
+f: 10
+T: 50
+W_RLS: 5
+gamma_RLS: 0.8
+is_sim: True
+
+
+# Mass: 0.025 for simulation # 0.034 for CF with markers and battery
+m: 0.025
+
+# Kalman Filter
+filtering: False
+
+# Process Noise in Experiments
+#process_noise_var: 0.0001
+#measurement_noise_var: 0.004
+
+# Process Noise in Simulation
+process_noise_var: 0.00000001
+measurement_noise_var: 0.0004
+
+# Virtual Target Mode: 0 for targets moving on the x-y plane, 1 for x-z, 2 for y-z
+mode: 0
+
+# Virtual Target Noise
+add_noise: False
+
+# Choose the path to package:
+path: '~/drones/catkin_ws/src/crazyflie_online_tracker/'
+
+# Choose the target
+#target: 'stationary_target'
+#target: 'square_target'
+target: 'circular_target'
+#target: 'decay_velocity'
+#target: 'sin_target'
+#target: 'square_wave'
+#target: 'const_accel'
+#target: 'heart_target'
+#target: 'waypoint'
+#target: 'switching_target'
+
+
+# Complexity of the dynamic target
+#compl: 'linear'
+compl: 'sqrt'
+#compl: 'T3/2'
+
+# Constants
+g: 9.81
