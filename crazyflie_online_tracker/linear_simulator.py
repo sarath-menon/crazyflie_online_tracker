@@ -10,7 +10,7 @@ import os
 from scipy.spatial.transform import Rotation
 from scipy.linalg import solve_discrete_are
 from crazyflie_online_tracker_interfaces.msg import CommandOuter, ControllerState, CrazyflieState
-from controller import ControllerStates
+from .controller import ControllerStates
 from actuator import Actuator
 from scipy.linalg import inv
 
