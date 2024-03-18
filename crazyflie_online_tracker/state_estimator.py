@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from abc import ABC, abstractmethod
-from controller import MotionIndex
+from .controller import MotionIndex
 
 
 class StateEstimator(ABC):
