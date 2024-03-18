@@ -14,6 +14,7 @@ from .controller import ControllerStates
 from .actuator import Actuator
 from scipy.linalg import inv
 
+
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
 
@@ -102,11 +103,12 @@ class CrazyflieActuator(Actuator):
         self.last_command_received = False
 
         # ros2 config
-        self.setpoint_sub = self.create_subscription(CommandOuter, "controllerCommand", self.callback_command, 10)
-        self.controller_state_pub = self.create_publisher(ControllerState, 'controllerState', 10)
-        self.drone_state_pub = self.create_publisher(CrazyflieState, 'crazyflieState', 10)
-        self.filtered_drone_state_pub = self.create_publisher(CrazyflieState, 'FilteredCrazyflieState', 10)
-        self.system_output_pub = self.create_publisher(CrazyflieState, 'SystemOutput', 10)
+        node = rclpy.create_node('asdf')
+        self.setpoint_sub = node.create_subscription(CommandOuter, "controllerCommand", self.callback_command, 10)
+        self.controller_state_pub = node.create_publisher(ControllerState, 'controllerState', 10)
+        self.drone_state_pub = node.create_publisher(CrazyflieState, 'crazyflieState', 10)
+        self.filtered_drone_state_pub = node.create_publisher(CrazyflieState, 'FilteredCrazyflieState', 10)
+        self.system_output_pub = node.create_publisher(CrazyflieState, 'SystemOutput', 10)
 
 
         controller_state = ControllerState()
