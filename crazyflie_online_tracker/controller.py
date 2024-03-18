@@ -5,13 +5,13 @@ from scipy.spatial.transform import Rotation
 import os
 import rclpy
 from rclpy.node import Node
-from crazyflie_online_tracker.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
+from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 from datetime import datetime
 from scipy import linalg
 from std_msgs.msg import Empty
 import yaml
 
-from crazyflie_online_tracker.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
+from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 
 # copied from dfall package, for taking off and landing
 motor_poly = [5.484560e-4, 1.032633e-6, 2.130295e-11]

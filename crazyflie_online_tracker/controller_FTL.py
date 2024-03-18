@@ -5,7 +5,7 @@ import time
 import yaml
 import os
 from scipy import linalg
-from crazyflie_online_tracker.msg import CommandOuter
+from crazyflie_online_tracker_interfaces.msg import CommandOuter
 from controller import Controller, ControllerStates
 
 # Load data from the YAML file

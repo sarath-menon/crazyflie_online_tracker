@@ -4,7 +4,7 @@ import struct
 import numpy as np
 from cflib.crtp.crtpstack import CRTPPacket, CRTPPort
 
-from crazyflie_online_tracker.msg import CommandCF, CommandOuter, ControllerState
+from crazyflie_online_tracker_interfaces.msg import CommandCF, CommandOuter, ControllerState
 from controller import ControllerStates
 from actuator import Actuator, dfallPacket
 import crazyflie_connection_helper

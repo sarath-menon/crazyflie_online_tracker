@@ -4,7 +4,7 @@ import numpy as np
 import time
 import yaml
 import os
-from crazyflie_online_tracker.msg import CommandOuter
+from crazyflie_online_tracker_interfaces.msg import CommandOuter
 from controller import Controller, ControllerStates
 
 # Load data from the YAML file

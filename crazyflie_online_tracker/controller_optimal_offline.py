@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from scipy import linalg
 from scipy.spatial.transform import Rotation as R
 from controller import Controller
-from crazyflie_online_tracker.msg import CommandOuter, TargetState
+from crazyflie_online_tracker_interfaces.msg import CommandOuter, TargetState
 import sys
 import glob
 
