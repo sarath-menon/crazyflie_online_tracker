@@ -270,7 +270,9 @@ class RLSController(Controller):
 def main(args=None):
     rclpy.init(args=args)
     RLS_controller = RLSController()
-    # wait_for_simulator_initialization = rclpy.get_param('wait_for_simulator_initialization')
+    wait_for_simulator_initialization  = RLS_controller.get_parameter('wait_for_simulator_initialization')
+
+    # = rclpy.get_param('wait_for_simulator_initialization')
     # add_initial_target = rclpy.get_param('add_initial_target')
 
     count = 5
