@@ -8,7 +8,7 @@ import yaml
 import os
 from scipy import linalg
 from crazyflie_online_tracker.msg import CommandOuter
-from controller import Controller, ControllerStates
+from .controller import Controller, ControllerStates
 from datetime import datetime
 
 
