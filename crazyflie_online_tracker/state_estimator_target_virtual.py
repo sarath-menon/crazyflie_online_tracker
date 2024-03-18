@@ -10,7 +10,7 @@ from scipy import linalg
 from scipy.spatial.transform import Rotation
 from crazyflie_online_tracker_interfaces.msg import TargetState
 from crazyflie_online_tracker_interfaces.srv import PublishSingleTarget
-from state_estimator import StateEstimator, MotionIndex
+from .state_estimator import StateEstimator, MotionIndex
 import std_msgs.msg
 
 # Load data from the YAML file
@@ -38,8 +38,11 @@ class TargetStateEstimator(StateEstimator):
     '''
     def __init__(self):
         super().__init__()
-        self.state_pub = self.create_publisher(TargetState, 'targetState', 10)
-        self.service = self.create_service(PublishSingleTarget, '/publish_single_target', self.handle_publish_single_target)
+
+        # ros2 config
+        node = rclpy.create_node("state_estimator_target_virtual")
+        self.state_pub = node.create_publisher(TargetState, 'targetState', 10)
+        self.service = node.create_service(PublishSingleTarget, '/publish_single_target', self.handle_publish_single_target)
         # self.delta_t = 0.1 # model discretion timestep
         self.delta_t = float(1/f)
         self.target = target
@@ -151,6 +154,15 @@ class TargetStateEstimator(StateEstimator):
             self.count = 0
         else:
             self.count = 50 # don't start to move until the drone has taken off
+
+        rclpy.spin(node)
+
+        # Destroy the node explicitly
+        # (optional - otherwise it will be done automatically
+        # when the garbage collector destroys the node object)
+        node.destroy_node()
+        rclpy.shutdown()
+
 
     def publish_state(self):
         if target == 'stationary_target':
@@ -480,20 +492,22 @@ def main(args=None):
     target_state_estimator = TargetStateEstimator()
     target_state_estimator.motion = MotionIndex.forward
 
-    wait_for_simulator_initialization = rclpy.get_param('wait_for_simulator_initialization')
+    # wait_for_simulator_initialization = rclpy.get_param('wait_for_simulator_initialization')
 
-    rate = rclpy.Rate(f)
-    count = 5
-    rclpy.sleep(2)
-    while rclpy.ok():
-        if target_state_estimator.state_pub.get_num_connections()>0:
-            target_state_estimator.publish_state()
-            if wait_for_simulator_initialization:
-                rclpy.sleep(4)
-                count -= 1
-                if count < 0:
-                    wait_for_simulator_initialization = False
-            rate.sleep()
+    # rate = rclpy.Rate(f)
+    # count = 5
+
+    # rclpy.sleep(2)
+
+    # while rclpy.ok():
+    #     if target_state_estimator.state_pub.get_num_connections()>0:
+    #         target_state_estimator.publish_state()
+    #         if wait_for_simulator_initialization:
+    #             rclpy.sleep(4)
+    #             count -= 1
+    #             if count < 0:
+    #                 wait_for_simulator_initialization = False
+    #         rate.sleep()
 
 
 if __name__ == '__main__':
