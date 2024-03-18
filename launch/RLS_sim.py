@@ -32,9 +32,8 @@ def generate_launch_description():
         ),
         Node(
             package='crazyflie_online_tracker',
-            executable='controller_RLS.py',
-            name='controller',
-            output='screen',
+            executable='controller_RLS',
+            name='controller_RLS',
             parameters=[{
                 'publish_frequency': LaunchConfiguration('publish_frequency'),
                 'wait_for_simulator_initialization': LaunchConfiguration('wait_for_simulator_initialization'),
@@ -45,14 +44,12 @@ def generate_launch_description():
         ),
         Node(
             package='crazyflie_online_tracker',
-            executable='linear_simulator.py',
-            name='simulator',
-            output='screen'
+            executable='linear_simulator',
+            name='linear_simulator',
         ),
         Node(
             package='crazyflie_online_tracker',
-            executable='state_estimator_target_virtual.py',
-            name='state_estimator_target',
-            output='screen'
+            executable='state_estimator_target_virtual',
+            name='state_estimator_target_virtual',
         )
 ])
