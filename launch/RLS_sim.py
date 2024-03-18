@@ -33,7 +33,7 @@ def generate_launch_description():
         Node(
             package='crazyflie_online_tracker',
             executable='controller_RLS',
-            name='controller_RLS',
+            name='controller_base',
             parameters=[{
                 'publish_frequency': LaunchConfiguration('publish_frequency'),
                 'wait_for_simulator_initialization': LaunchConfiguration('wait_for_simulator_initialization'),
