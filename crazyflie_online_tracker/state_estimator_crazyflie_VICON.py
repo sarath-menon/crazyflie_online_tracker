@@ -74,11 +74,14 @@ class CrazyflieStateEstimatorVICON(StateEstimator):
         self.state_pub.publish(state_msg)
         # print(f"state: {state_vector}")
 
-
-if __name__ == '__main__':
+def main(args=None):
     crazyflie_state_estimator = CrazyflieStateEstimatorVICON()
     # f = 200 # publish frequency to crazyflieState topic
     # rate = rospy.Rate(f)
     while not rospy.is_shutdown():
         rospy.spin()
         # rate.sleep()
+
+
+if __name__ == '__main__':
+    main()

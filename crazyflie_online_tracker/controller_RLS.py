@@ -324,3 +324,6 @@ def main(args=None):
             time.sleep(2)
             if plot:
                os.system("ros2 run crazyflie_online_tracker plot.py")
+
+if __name__ == '__main__':
+    main()
