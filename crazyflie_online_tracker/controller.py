@@ -3,11 +3,13 @@ from abc import ABC, abstractmethod
 import numpy as np
 from scipy.spatial.transform import Rotation
 import os
-import rospy
-import yaml
-import os
+import rclpy
+from rclpy.node import Node
+from crazyflie_online_tracker.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 from datetime import datetime
 from scipy import linalg
+from std_msgs.msg import Empty
+import yaml
 
 from crazyflie_online_tracker.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 
@@ -56,16 +58,16 @@ class Controller(ABC):
         # INITIALIZATION OF CONTROLLER STATE
         self.controller_state = ControllerStates.stop
 
-        self.controller_state_sub = rospy.Subscriber('controllerState', ControllerState, self.callback_controller_state)
-        self.controller_command_pub = rospy.Publisher('controllerCommand', CommandOuter, queue_size=10)
-        self.controller_state_pub = rospy.Publisher('controllerStateKF', ControllerState, queue_size=10)
+        self.controller_state_sub = self.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
+        self.controller_command_pub = self.create_publisher(CommandOuter, 'controllerCommand', 10)
+        self.controller_state_pub = self.create_publisher(ControllerState, 'controllerStateKF', 10)
 
-        self.drone_state_sub = rospy.Subscriber('crazyflieState', CrazyflieState, self.callback_state_drone)
-        self.target_state_sub = rospy.Subscriber('targetState', TargetState, self.callback_state_target)
+        self.drone_state_sub = self.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
+        self.target_state_sub = self.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
+        self.create_subscription(Empty, 'shutdown', self.safe_shutdown, 10)
 
-        rospy.on_shutdown(self.safe_shutdown)
 
-        self.t = 0
+        self.t = 0  
         self.takeoff_phase = 0 # 0 for unstarted, 1 for spin motor, 2 for moving up, 3 for goto setpoint
         self.setpoint_takeoff = None # record the position where the drone starts to take off
         self.setpoint_landing = None # record the position where the drone starts to land
@@ -158,7 +160,7 @@ class Controller(ABC):
         drone_state[StateIndex.roll] = euler[2]
         drone_state[StateIndex.pitch] = euler[1]
         drone_state[StateIndex.yaw] = euler[0]
-        # rospy.loginfo(f"state: {drone_state}")
+        # self.get_logger().info(f"state: {drone_state}")
         self.drone_state_raw_log.append(drone_state)
 
     def callback_state_drone_filtered(self, data):
@@ -178,7 +180,7 @@ class Controller(ABC):
         filtered_drone_state[StateIndex.roll] = euler[2]
         filtered_drone_state[StateIndex.pitch] = euler[1]
         filtered_drone_state[StateIndex.yaw] = euler[0]
-        # rospy.loginfo(f"state: {filtered_drone_state}")
+        # self.get_logger().info(f"state: {filtered_drone_state}")
         self.filtered_drone_state_raw_log.append(filtered_drone_state)
 
     def callback_system_output(self, data):
@@ -198,7 +200,7 @@ class Controller(ABC):
         output[StateIndex.roll] = euler[2]
         output[StateIndex.pitch] = euler[1]
         output[StateIndex.yaw] = euler[0]
-        # rospy.loginfo(f"state: {drone_state}")
+        # self.get_logger().info(f"state: {drone_state}")
         self.system_output_raw_log.append(output)
 
     def callback_state_target(self, data):
@@ -221,16 +223,16 @@ class Controller(ABC):
         # target_state[StateIndex.z] = self.hover_height
         self.target_state_raw_log.append(target_state)
 
-    def callback_controller_state(self, data):
+    def callback_controller_state(self, data: CommandOuter):
         self.controller_state = data.state
         if self.controller_state == ControllerStates.normal:
-            rospy.loginfo('Controller state is changed to NORMAL.')
+            self.get_logger().info('Controller state is changed to NORMAL.')
         elif self.controller_state == ControllerStates.takeoff:
-            rospy.loginfo('Controller state is changed to TAKEOFF.')
+            self.get_logger().info('Controller state is changed to TAKEOFF.')
         elif self.controller_state == ControllerStates.landing:
-            rospy.loginfo('Controller state is changed to LANDING.')
+            self.get_logger().info('Controller state is changed to LANDING.')
         elif self.controller_state == ControllerStates.stop:
-            rospy.loginfo('Controller state is changed to STOP.')
+            self.get_logger().info('Controller state is changed to STOP.')
 
     def safe_shutdown(self):
         # place holder
@@ -247,7 +249,7 @@ class Controller(ABC):
         """
         The default controller used for takeoff and landing. The value of LQR gains are taken from dfall_pkg/src/nodes/DefaultControllerService.cpp
         """
-        # rospy.loginfo("error_inertial: "+str(error_inertial))
+        # self.get_logger().info("error_inertial: "+str(error_inertial))
         # clip the error
         max_error_xy = 0.3
         error_x_inertial = max(min(error_inertial[0], max_error_xy), -max_error_xy)
@@ -258,7 +260,7 @@ class Controller(ABC):
         max_error_yaw = np.deg2rad(60)
         error_yaw_inertial = max(min(error_yaw_inertial, max_error_yaw), -max_error_yaw)
         # convert error from inertial frame to body frame to compensate the linearization error of yaw!=0
-        # rospy.loginfo("real error: " + str(error_inertial))
+        # self.get_logger().info("real error: " + str(error_inertial))
         sinyaw = np.sin(curr_yaw)
         cosyaw = np.cos(curr_yaw)
         error_body = error_inertial.copy()
@@ -267,7 +269,7 @@ class Controller(ABC):
         error_body[2] = error_z_inertial
         error_body[3] = error_inertial[3]*cosyaw + error_inertial[4]*sinyaw
         error_body[4] = error_inertial[4]*cosyaw - error_inertial[3]*sinyaw
-        # rospy.loginfo("error_body: "+str(error_body))
+        # self.get_logger().info("error_body: "+str(error_body))
         u = -K_star@error_body.reshape([9, 1])
         thrust = u[0] + self.m*self.g
         roll_rate = u[1]
@@ -279,7 +281,7 @@ class Controller(ABC):
         """
         The default controller used for takeoff and landing. The value of LQR gains are taken from dfall_pkg/src/nodes/DefaultControllerService.cpp
         """
-        # rospy.loginfo("error_inertial: "+str(error_inertial))
+        # self.get_logger().info("error_inertial: "+str(error_inertial))
         # clip the error
         max_error_xy = 0.3
         error_x_inertial = max(min(error_inertial[0], max_error_xy), -max_error_xy)
@@ -289,7 +291,7 @@ class Controller(ABC):
         error_yaw_inertial = wrap_angle(error_inertial[8])
         max_error_yaw = np.deg2rad(60)
         # convert error from inertial frame to body frame to compensate the linearization error of yaw!=0
-        # rospy.loginfo("real error: " + str(error_inertial))
+        # self.get_logger().info("real error: " + str(error_inertial))
         error_body = error_inertial.copy()
         error_body[0] = error_x_inertial
         error_body[1] = error_y_inertial
@@ -298,7 +300,7 @@ class Controller(ABC):
         error_body[4] = error_inertial[4]
         u = -K_star@error_body.reshape([9, 1])
         thrust = u[0] + self.m*self.g
-        # rospy.loginfo("u[0] " + str(u[0]))
+        # self.get_logger().info("u[0] " + str(u[0]))
         roll_rate = u[1]
         pitch_rate = u[2]
         yaw_rate = u[3]
@@ -321,7 +323,7 @@ class Controller(ABC):
         takeoff_start_height = 0.1
         takeoff_end_height = 0.4
         if time_takeoff <= time_spin_motor:
-            rospy.loginfo("takeoff: spin motor for "+str(time_takeoff)+' seconds')
+            self.get_logger().info("takeoff: spin motor for "+str(time_takeoff)+' seconds')
             if self.takeoff_phase < 1:
                 self.takeoff_phase = 1
             command = CommandOuter()
@@ -331,7 +333,7 @@ class Controller(ABC):
             command.omega.y = 0
             command.omega.z = 0
         elif time_takeoff <= time_spin_motor+time_move_up:
-            rospy.loginfo("takeoff: move up for "+str(time_takeoff)+' seconds')
+            self.get_logger().info("takeoff: move up for "+str(time_takeoff)+' seconds')
             if self.takeoff_phase < 2:
                 self.takeoff_phase = 2
                 self.setpoint_takeoff = drone_state[:3]
@@ -344,9 +346,9 @@ class Controller(ABC):
             # error_inertial[8] = 0
             error_inertial[8] = wrap_angle(drone_state[8]) * time_proportion
             [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star_takeoff, error_inertial, drone_state[8])
-            rospy.loginfo('drone state:'+str(drone_state))
-            rospy.loginfo('error:'+str(error_inertial))
-            rospy.loginfo('action:'+str([thrust, roll_rate, pitch_rate, yaw_rate]))
+            self.get_logger().info('drone state:'+str(drone_state))
+            self.get_logger().info('error:'+str(error_inertial))
+            self.get_logger().info('action:'+str([thrust, roll_rate, pitch_rate, yaw_rate]))
             # assign desired values to command as defined in the dfall decoder at the onborad firmware
             command = CommandOuter()
             command.thrust = thrust
@@ -360,9 +362,9 @@ class Controller(ABC):
             if desired_pos is None:
                 desired_pos = self.setpoint_takeoff
             desired_pos_limited = self.limit_pos_change(self.setpoint_takeoff, desired_pos)
-            rospy.loginfo("takeoff: goto setpoint")
-            rospy.loginfo('desired pos: '+str(desired_pos))
-            rospy.loginfo('desired pos limited: '+str(desired_pos_limited))
+            self.get_logger().info("takeoff: goto setpoint")
+            self.get_logger().info('desired pos: '+str(desired_pos))
+            self.get_logger().info('desired pos limited: '+str(desired_pos_limited))
             error_inertial = drone_state.copy()
             error_inertial[0] = drone_state[0] - desired_pos_limited[0]
             error_inertial[1] = drone_state[1] - desired_pos_limited[1]
@@ -407,15 +409,15 @@ class Controller(ABC):
             desired_pos = self.setpoint_landing.copy()
             desired_pos[2] = landing_end_height
             desired_pos_limited = self.limit_pos_change(self.setpoint_landing, desired_pos)
-            # rospy.loginfo('limited pos: '+str(desired_pos_limited))
-            # rospy.loginfo('drone state: '+str(drone_state))
+            # self.get_logger().info('limited pos: '+str(desired_pos_limited))
+            # self.get_logger().info('drone state: '+str(drone_state))
             error_inertial = drone_state.copy()
             error_inertial[0] = drone_state[0] - desired_pos_limited[0]
             error_inertial[1] = drone_state[1] - desired_pos_limited[1]
             error_inertial[2] = drone_state[2] - desired_pos_limited[2]
             self.setpoint_landing = desired_pos_limited
             [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star_takeoff, error_inertial, drone_state[8])
-            # rospy.loginfo('action: '+str([thrust, roll_rate, pitch_rate, yaw_rate]))
+            # self.get_logger().info('action: '+str([thrust, roll_rate, pitch_rate, yaw_rate]))
             # assign desired values to command as defined in the dfall decoder at the onborad firmware
             command = CommandOuter()
             command.thrust = thrust
@@ -478,7 +480,7 @@ class Controller(ABC):
                      disturbance_log=np.array(self.disturbances),
                      default_action_log=np.array(self.default_action_log),
                      optimal_action_log=np.array(self.optimal_action_log))
-        rospy.loginfo("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
+        self.get_logger().info("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
 
     def load_data(self, filename):
         try:
@@ -486,7 +488,7 @@ class Controller(ABC):
             self.target_state_log = data['target_state_log']
             self.drone_state_algorithm_log = data['drone_state_log']
             self.action_algorithm_log = data['action_log']
-            rospy.loginfo("Load data from" + self.save_path + '/', filename + '.npz')
+            self.get_logger().info("Load data from" + self.save_path + '/', filename + '.npz')
             return True
         except:
             return False
