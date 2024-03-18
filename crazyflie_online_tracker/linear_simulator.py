@@ -103,7 +103,7 @@ class CrazyflieActuator(Actuator):
         self.last_command_received = False
 
         # ros2 config
-        node = rclpy.create_node('asdf')
+        node = rclpy.create_node("linear_simulator")
         self.setpoint_sub = node.create_subscription(CommandOuter, "controllerCommand", self.callback_command, 10)
         self.controller_state_pub = node.create_publisher(ControllerState, 'controllerState', 10)
         self.drone_state_pub = node.create_publisher(CrazyflieState, 'crazyflieState', 10)
@@ -131,6 +131,15 @@ class CrazyflieActuator(Actuator):
             filtered_curr_state = self.kalman_filtering(measurement, action_init, K_inf)
             filtered_curr_state_msg = self.state_vec_to_msg(filtered_curr_state)
             self.filtered_drone_state_pub.publish(filtered_curr_state_msg)
+
+        rclpy.spin(node)
+
+        # Destroy the node explicitly
+        # (optional - otherwise it will be done automatically
+        # when the garbage collector destroys the node object)
+        node.destroy_node()
+        rclpy.shutdown()
+
 
     def kalman_filtering(self, measurement, action, kalman_gain):
         # Prediction step
@@ -178,18 +187,18 @@ class CrazyflieActuator(Actuator):
 
     def state_vec_to_msg(self, state_vector):
         state = CrazyflieState()
-        state.pose.position.x = state_vector[0]
-        state.pose.position.y = state_vector[1]
-        state.pose.position.z = state_vector[2]
-        r = Rotation.from_euler('ZYX', [state_vector[8][0], state_vector[7][0], state_vector[6][0]])
-        quaternion = r.as_quat()
-        state.pose.orientation.x = quaternion[0]
-        state.pose.orientation.y = quaternion[1]
-        state.pose.orientation.z = quaternion[2]
-        state.pose.orientation.w = quaternion[3]
-        state.velocity.linear.x = state_vector[3]
-        state.velocity.linear.y = state_vector[4]
-        state.velocity.linear.z = state_vector[5]
+        # state.pose.position.x = state_vector[0]
+        # state.pose.position.y = state_vector[1]
+        # state.pose.position.z = state_vector[2]
+        # r = Rotation.from_euler('ZYX', [state_vector[8][0], state_vector[7][0], state_vector[6][0]])
+        # quaternion = r.as_quat()
+        # state.pose.orientation.x = quaternion[0]
+        # state.pose.orientation.y = quaternion[1]
+        # state.pose.orientation.z = quaternion[2]
+        # state.pose.orientation.w = quaternion[3]
+        # state.velocity.linear.x = state_vector[3]
+        # state.velocity.linear.y = state_vector[4]
+        # state.velocity.linear.z = state_vector[5]
         return state
 
 
@@ -198,13 +207,13 @@ def main(args=None):
 
     minimal_publisher = CrazyflieActuator()
 
-    rclpy.spin(minimal_publisher)
+    # rclpy.spin(minimal_publisher)
 
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    minimal_publisher.destroy_node()
-    rclpy.shutdown()
+    # # Destroy the node explicitly
+    # # (optional - otherwise it will be done automatically
+    # # when the garbage collector destroys the node object)
+    # minimal_publisher.destroy_node()
+    # rclpy.shutdown()
     
 
 if __name__ == '__main__':
