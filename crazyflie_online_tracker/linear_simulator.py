@@ -11,7 +11,7 @@ from scipy.spatial.transform import Rotation
 from scipy.linalg import solve_discrete_are
 from crazyflie_online_tracker_interfaces.msg import CommandOuter, ControllerState, CrazyflieState
 from .controller import ControllerStates
-from actuator import Actuator
+from .actuator import Actuator
 from scipy.linalg import inv
 
 # Load data from the YAML file
@@ -93,7 +93,7 @@ if filtering:
 
 class CrazyflieActuator(Actuator):
     def __init__(self):
-        super().__init__('crazyflie_actuator')
+        super().__init__()
         self.curr_state = np.zeros((9, 1))
 
         # set initial state of the simulation
