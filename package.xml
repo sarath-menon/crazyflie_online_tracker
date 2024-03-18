@@ -11,7 +11,7 @@
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
-  <depend>crazyflie_interfaces</depend>
+  <depend>crazyflie_online_tracker_interfaces</depend>
   <license>Apache-2.0</license>
 
 
