@@ -39,7 +39,7 @@ class RLSController(Controller):
     This is the proposed PLOT controller without an affine term.
     '''
     def __init__(self):
-        super().__init__('RLS_controller')
+        super().__init__()
         self.m = m
         self.gamma = gamma # forgetting factor
         self.W = W # prediction horizon
@@ -270,13 +270,13 @@ class RLSController(Controller):
 def main(args=None):
     rclpy.init(args=args)
     RLS_controller = RLSController()
-    wait_for_simulator_initialization = rclpy.get_param('wait_for_simulator_initialization')
-    add_initial_target = rclpy.get_param('add_initial_target')
+    # wait_for_simulator_initialization = rclpy.get_param('wait_for_simulator_initialization')
+    # add_initial_target = rclpy.get_param('add_initial_target')
 
     count = 5
-    rate = rclpy.Rate(f)
+    # rate = rclpy.Rate(f)
 
-    rclpy.sleep(2)
+    # rclpy.sleep(2)
     # Set to True to save data for post-processing
     save_log = True
 
@@ -312,18 +312,25 @@ def main(args=None):
                 rclpy.loginfo('Simulation finished.')
             else:
                 RLS_controller.publish_setpoint()
-        rate.sleep()
+        
+        rclpy.spin(RLS_controller)
+
+        # Destroy the node explicitly
+        # (optional - otherwise it will be done automatically
+        # when the garbage collector destroys the node object)
+        RLS_controller.destroy_node()
+        rclpy.shutdown()
 
     if RLS_controller.controller_state == ControllerStates.stop:
-        rclpy.loginfo('controller state is set to STOP. Terminating.')
-        if save_log:
-            filename = rclpy.get_param('filename')
-            additional_info = f"_{target}_T{T}_f{f}_gam{round(RLS_controller.gamma,2)}_W{W}_mode{mode}"
-            new_filename = filename + additional_info
-            RLS_controller.save_data(new_filename)
-            time.sleep(2)
-            if plot:
-               os.system("ros2 run crazyflie_online_tracker plot.py")
+        RLS_controller.get_logger().info('controller state is set to STOP. Terminating.')
+        # if save_log:
+        #     filename = rclpy.get_param('filename')
+        #     additional_info = f"_{target}_T{T}_f{f}_gam{round(RLS_controller.gamma,2)}_W{W}_mode{mode}"
+        #     new_filename = filename + additional_info
+        #     RLS_controller.save_data(new_filename)
+        #     time.sleep(2)
+        #     if plot:
+        #        os.system("ros2 run crazyflie_online_tracker plot.py")
 
 if __name__ == '__main__':
     main()
