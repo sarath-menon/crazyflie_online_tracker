@@ -34,10 +34,9 @@ filtering = yaml_data['filtering']
 is_sim = yaml_data['is_sim']
 
 
-class Controller(Node):
+class Controller():
     def __init__(self):
 
-        super().__init__('controller_base')
         self.drone_state_raw_log = [] # restore all received drone state measurements.
         self.target_state_raw_log = [] # restore all received target state measurements.
         self.drone_state_log = [] # restore drone states that are used for computing the setpoints(at 10Hz)
@@ -60,12 +59,12 @@ class Controller(Node):
         # INITIALIZATION OF CONTROLLER STATE
         self.controller_state = ControllerStates.stop
 
-        self.controller_state_sub = self.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
-        self.controller_command_pub = self.create_publisher(CommandOuter, 'controllerCommand', 10)
-        self.controller_state_pub = self.create_publisher(ControllerState, 'controllerStateKF', 10)
+        self.controller_state_sub = None
+        self.controller_command_pub = None
+        self.controller_state_pub = None
 
-        self.drone_state_sub = self.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
-        self.target_state_sub = self.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
+        self.drone_state_sub = None
+        self.target_state_sub = None
 
         # for shutfown, fix later
         # self.create_subscription(Empty, 'shutdown', self.safe_shutdown, 10)
