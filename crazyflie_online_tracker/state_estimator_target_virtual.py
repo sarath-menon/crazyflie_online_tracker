@@ -172,7 +172,7 @@ class TargetStateEstimator(StateEstimator):
 
 
     def timer_callback(self):
-        self.node.get_logger().info(f"Publishing target")
+        # self.node.get_logger().info(f"Publishing target")
 
         if rclpy.ok():
             self.publish_state()
