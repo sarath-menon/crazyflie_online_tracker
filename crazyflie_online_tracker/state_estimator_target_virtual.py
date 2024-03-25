@@ -12,6 +12,7 @@ from crazyflie_online_tracker_interfaces.msg import TargetState
 from crazyflie_online_tracker_interfaces.srv import PublishSingleTarget
 from .state_estimator import StateEstimator, MotionIndex
 import std_msgs.msg
+import time
 
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
@@ -40,12 +41,22 @@ class TargetStateEstimator(StateEstimator):
         super().__init__()
 
         # ros2 config
-        node = rclpy.create_node("state_estimator_target_virtual")
-        self.state_pub = node.create_publisher(TargetState, 'targetState', 10)
-        self.service = node.create_service(PublishSingleTarget, '/publish_single_target', self.handle_publish_single_target)
+        rclpy.init()
+        self.node = rclpy.create_node("state_estimator_target_virtual")
+
+        # publishers and subscribers
+        self.state_pub = self.node.create_publisher(TargetState, 'targetState', 10)
+        self.service = self.node.create_service(PublishSingleTarget, '/publish_single_target', self.handle_publish_single_target)
         # self.delta_t = 0.1 # model discretion timestep
         self.delta_t = float(1/f)
         self.target = target
+
+        self.node.declare_parameter('wait_for_simulator_initialization', False)
+        self.wait_for_simulator_initialization = self.node.get_parameter('wait_for_simulator_initialization')
+
+         # timer callbacks
+        timer_period = 0.5  # seconds
+        self.timer = self.node.create_timer(timer_period, self.timer_callback)
 
         if compl == 'sqrt':
             self.compl = np.sqrt(T*f)
@@ -155,13 +166,21 @@ class TargetStateEstimator(StateEstimator):
         else:
             self.count = 50 # don't start to move until the drone has taken off
 
-        rclpy.spin(node)
-
-        # Destroy the node explicitly
-        # (optional - otherwise it will be done automatically
-        # when the garbage collector destroys the node object)
-        node.destroy_node()
+        rclpy.spin(self.node)
+        self.node.destroy_node()
         rclpy.shutdown()
+
+
+    def timer_callback(self):
+        self.node.get_logger().info(f"Publishing target")
+
+        if rclpy.ok():
+            self.publish_state()
+            # if self.wait_for_simulator_initialization:
+            #     time.sleep(4)
+            #     count -= 1
+            #     if count < 0:
+            #         self.wait_for_simulator_initialization = False
 
 
     def publish_state(self):
@@ -426,28 +445,30 @@ class TargetStateEstimator(StateEstimator):
         curr_state = self.curr_state.copy()
         self.state = TargetState()
         # self.state.header = std_msgs.msg.Header()
-        self.state.header.stamp = self.get_clock().now().to_msg()
+        self.state.header.stamp = self.node.get_clock().now().to_msg()
+        
+
         if self.mode == 1:
-            self.state.pose.position.x = curr_state[0]
-            self.state.pose.position.y = self.default_y
-            self.state.pose.position.z = curr_state[1]
-            self.state.velocity.linear.x = curr_state[2]
-            self.state.velocity.linear.y = 0
-            self.state.velocity.linear.z = curr_state[3]
+            self.state.pose.position.x = float(curr_state[0])
+            self.state.pose.position.y = float(self.default_y)
+            self.state.pose.position.z = float(curr_state[1])
+            self.state.velocity.linear.x = float(curr_state[2])
+            self.state.velocity.linear.y = 0.0
+            self.state.velocity.linear.z = float(curr_state[3])
         elif self.mode == 2:
-            self.state.pose.position.x = self.default_x
-            self.state.pose.position.y = curr_state[0]
-            self.state.pose.position.z = curr_state[1]
-            self.state.velocity.linear.x = 0
-            self.state.velocity.linear.y = curr_state[2]
-            self.state.velocity.linear.z = curr_state[3]
+            self.state.pose.position.x = float(self.default_x)
+            self.state.pose.position.y = float(curr_state[0])
+            self.state.pose.position.z = float(curr_state[1])
+            self.state.velocity.linear.x = 0.0
+            self.state.velocity.linear.y = float(curr_state[2])
+            self.state.velocity.linear.z = float(curr_state[3])
         else:
-            self.state.pose.position.x = curr_state[0]
-            self.state.pose.position.y = curr_state[1]
-            self.state.pose.position.z = self.default_z
-            self.state.velocity.linear.x = curr_state[2]
-            self.state.velocity.linear.y = curr_state[3]
-            self.state.velocity.linear.z = 0
+            self.state.pose.position.x = float(curr_state[0])
+            self.state.pose.position.y = float(curr_state[1])
+            self.state.pose.position.z = float(self.default_z)
+            self.state.velocity.linear.x = float(curr_state[2])
+            self.state.velocity.linear.y = float(curr_state[3])
+            self.state.velocity.linear.z = 0.0
         if add_noise:
             self.state.pose.position.x += (np.random.rand(1)-0.5)*0.05
             self.state.pose.position.y += (np.random.rand(1)-0.5)*0.05
@@ -458,10 +479,10 @@ class TargetStateEstimator(StateEstimator):
         # r = R.from_euler('ZYX', [-np.pi/2, 0, 0])
         r = Rotation.from_euler('ZYX', [0, 0, 0])
         quaternion = r.as_quat()
-        self.state.pose.orientation.x = quaternion[0]
-        self.state.pose.orientation.y = quaternion[1]
-        self.state.pose.orientation.z = quaternion[2]
-        self.state.pose.orientation.w = quaternion[3]
+        self.state.pose.orientation.x = float(quaternion[0])
+        self.state.pose.orientation.y = float(quaternion[1])
+        self.state.pose.orientation.z = float(quaternion[2])
+        self.state.pose.orientation.w = float(quaternion[3])
 
     def handle_publish_single_target(self, req):
         # publish single target state message by calling service PublishSingleTarget
@@ -486,29 +507,11 @@ class TargetStateEstimator(StateEstimator):
         
 
 def main(args=None):
-    rclpy.init(args=args)
-
     np.random.seed(10)
     target_state_estimator = TargetStateEstimator()
     target_state_estimator.motion = MotionIndex.forward
 
-    # wait_for_simulator_initialization = rclpy.get_param('wait_for_simulator_initialization')
-
-    # rate = rclpy.Rate(f)
-    # count = 5
-
-    # rclpy.sleep(2)
-
-    # while rclpy.ok():
-    #     if target_state_estimator.state_pub.get_num_connections()>0:
-    #         target_state_estimator.publish_state()
-    #         if wait_for_simulator_initialization:
-    #             rclpy.sleep(4)
-    #             count -= 1
-    #             if count < 0:
-    #                 wait_for_simulator_initialization = False
-    #         rate.sleep()
-
+    
 
 if __name__ == '__main__':
     main()
