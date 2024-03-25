@@ -106,12 +106,12 @@ class CrazyflieActuator(Actuator):
         self.last_command_received = False
 
         # ros2 config
-        node = rclpy.create_node("linear_simulator")
-        self.setpoint_sub = node.create_subscription(CommandOuter, "controllerCommand", self.callback_command, 10)
-        self.controller_state_pub = node.create_publisher(ControllerState, 'controllerState', 10)
-        self.drone_state_pub = node.create_publisher(CrazyflieState, 'crazyflieState', 10)
-        self.filtered_drone_state_pub = node.create_publisher(CrazyflieState, 'FilteredCrazyflieState', 10)
-        self.system_output_pub = node.create_publisher(CrazyflieState, 'SystemOutput', 10)
+        self.node = rclpy.create_node("linear_simulator")
+        self.setpoint_sub = self.node.create_subscription(CommandOuter, "controllerCommand", self.callback_command, 10)
+        self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerState', 10)
+        self.drone_state_pub = self.node.create_publisher(CrazyflieState, 'crazyflieState', 10)
+        self.filtered_drone_state_pub = self.node.create_publisher(CrazyflieState, 'FilteredCrazyflieState', 10)
+        self.system_output_pub = self.node.create_publisher(CrazyflieState, 'SystemOutput', 10)
 
 
         # Create a new controller state and set it to normal
@@ -142,12 +142,12 @@ class CrazyflieActuator(Actuator):
             filtered_curr_state_msg = self.state_vec_to_msg(filtered_curr_state)
             self.filtered_drone_state_pub.publish(filtered_curr_state_msg)
 
-        rclpy.spin(node)
+        rclpy.spin(self.node)
 
         # Destroy the node explicitly
         # (optional - otherwise it will be done automatically
         # when the garbage collector destroys the node object)
-        node.destroy_node()
+        self.node.destroy_node()
         rclpy.shutdown()
 
 
@@ -164,7 +164,8 @@ class CrazyflieActuator(Actuator):
         return filtered_next_state
 
     def callback_command(self, data):
-        self.get_logger().info('setpoint received')
+        self.node.get_logger().info('controller command received')
+
         # # don't send any more command if the crazyflie has already landed.
         if data.is_last_command or self.last_command_received:
             print('last command received')
