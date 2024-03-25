@@ -95,8 +95,8 @@ class RLSController(Controller):
 
         # get params
         publish_frequency = self.node.get_parameter('publish_frequency')
-        wait_for_simulator_initialization  = self.node.get_parameter('wait_for_simulator_initialization')
-        add_initial_target = self.node.get_parameter('add_initial_target')
+        self.wait_for_simulator_initialization  = self.node.get_parameter('wait_for_simulator_initialization')
+        self.add_initial_target = self.node.get_parameter('add_initial_target')
         filename = self.node.get_parameter('filename')
         synchronize_target = self.node.get_parameter('synchronize_target')
 
@@ -104,64 +104,59 @@ class RLSController(Controller):
         timer_period = 0.5  # seconds
         self.timer = self.node.create_timer(timer_period, self.timer_callback)
 
-        count = 5
-        # rate = rclpy.Rate(f)
 
         # Set to True to save data for post-processing
         save_log = True
 
         # Set to True to generate a plot immediately
         plot = True
-
-
         
         rclpy.spin(self.node)
         # node.destroy_node()
         # rclpy.shutdown()
 
-
-        time.sleep(2)
-
     def timer_callback(self):
         self.node.get_logger().info('selva')
 
-        # while rclpy.ok() and self.controller_state != ControllerStates.stop:
-        #     ready = False
-        #     if add_initial_target and len(self.target_state_raw_log)==0:
-        #         initial_target = np.zeros((9, 1))
-        #         initial_target[:3] = self.desired_pos.reshape((3, 1))
-        #         self.target_state_raw_log.append(initial_target)
-        #     if len(self.drone_state_raw_log)>0 and \
-        #         len(self.target_state_raw_log)>0:
-        #         ready = True
-        #     if self.t <= T:
-        #         if ready:
-        #             if self.controller_state == ControllerStates.normal:
-        #                 self.get_new_states()
-        #                 self.RLS_update()
-        #             self.publish_setpoint()
-        #             self.t += self.delta_t
-        #             if wait_for_simulator_initialization:
-        #                 rclpy.sleep(4)
-        #                 count -= 1
-        #                 if count < 0:
-        #                     wait_for_simulator_initialization = False
-        #         else:
-        #             rclpy.loginfo('No drone or target state estimation is available. Skipping.')
-        #     else:
-        #         if self.controller_state == ControllerStates.normal:
-        #             self.publish_setpoint(is_last_command=True)
-        #             rclpy.loginfo('Simulation finished.')
-        #         else:
-        #             self.publish_setpoint()
-            
-        #     rclpy.spin(node)
+        while rclpy.ok() and self.controller_state != ControllerStates.stop:
+            ready = False
 
-        #     # Destroy the node explicitly
-        #     # (optional - otherwise it will be done automatically
-        #     # when the garbage collector destroys the node object)
-        #     self.node.destroy_node()
-        #     rclpy.shutdown()
+            # Check if initial target is to be added and if the target state log is empty
+            if self.add_initial_target and len(self.target_state_raw_log)==0:
+                initial_target = np.zeros((9, 1))
+                initial_target[:3] = self.desired_pos.reshape((3, 1))
+                self.target_state_raw_log.append(initial_target)
+
+            # Check if both drone state log and target state log are not empty
+            if len(self.drone_state_raw_log)>0 and \
+                len(self.target_state_raw_log)>0:
+                ready = True
+                
+            # Check if current time is less than or equal to T
+            if self.t <= T:
+                if ready:
+                    # Check if the controller state is normal
+                    if self.controller_state == ControllerStates.normal:
+                        self.get_new_states()
+                        self.RLS_update()
+                    self.publish_setpoint()
+                    self.t += self.delta_t
+                    # Check if we need to wait for simulator initialization
+                    if wait_for_simulator_initialization:
+                        rclpy.sleep(4)
+                        count -= 1
+                        if count < 0:
+                            wait_for_simulator_initialization = False
+                else:
+                    self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
+            else:
+                # Check if the controller state is normal
+                if self.controller_state == ControllerStates.normal:
+                    self.publish_setpoint(is_last_command=True)
+                    self.node.get_logger().info('Simulation finished.')
+                else:
+                    self.publish_setpoint()
+
 
         # if self.controller_state == ControllerStates.stop:
         #     self.node.get_logger().info('controller state is set to STOP. Terminating.')
