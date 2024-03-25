@@ -51,9 +51,6 @@ class TargetStateEstimator(StateEstimator):
         self.delta_t = float(1/f)
         self.target = target
 
-        self.node.declare_parameter('wait_for_simulator_initialization', False)
-        self.wait_for_simulator_initialization = self.node.get_parameter('wait_for_simulator_initialization')
-
          # timer callbacks
         timer_period = 0.5  # seconds
         self.timer = self.node.create_timer(timer_period, self.timer_callback)
@@ -173,15 +170,7 @@ class TargetStateEstimator(StateEstimator):
 
     def timer_callback(self):
         # self.node.get_logger().info(f"Publishing target")
-
-        if rclpy.ok():
-            self.publish_state()
-            # if self.wait_for_simulator_initialization:
-            #     time.sleep(4)
-            #     count -= 1
-            #     if count < 0:
-            #         self.wait_for_simulator_initialization = False
-
+        self.publish_state()
 
     def publish_state(self):
         if target == 'stationary_target':

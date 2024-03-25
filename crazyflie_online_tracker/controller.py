@@ -151,7 +151,7 @@ class Controller():
         pass
 
     def callback_state_drone(self, data):
-        self.node.get_logger().info('Received drone state.')
+        # self.node.get_logger().info('Received drone state.')
 
         drone_state = np.zeros((9, 1))
         drone_state[StateIndex.x] = data.pose.position.x
@@ -237,9 +237,6 @@ class Controller():
         self.target_state_raw_log.append(target_state)
 
     def callback_controller_state(self, data: CommandOuter):
-
-        self.node.get_logger().info(f"Received Controller state: {data.state}")
-
         self.controller_state = data.state
         if self.controller_state == ControllerStates.normal:
             self.node.get_logger().info('Controller state is changed to NORMAL.')

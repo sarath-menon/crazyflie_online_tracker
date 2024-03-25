@@ -84,32 +84,23 @@ class RLSController(Controller):
 
         self.disturbances_predicted = []
 
-
          # declare params
-        self.node.declare_parameter('publish_frequency', 20.0)
-        self.node.declare_parameter('wait_for_simulator_initialization', False)
         self.node.declare_parameter('add_initial_target', False)
-        self.node.declare_parameter('filename', "filename")
         self.node.declare_parameter('synchronize_target', False)
-        
 
         # get params
-        publish_frequency = self.node.get_parameter('publish_frequency')
-        self.wait_for_simulator_initialization  = self.node.get_parameter('wait_for_simulator_initialization')
         self.add_initial_target = self.node.get_parameter('add_initial_target')
-        filename = self.node.get_parameter('filename')
-        synchronize_target = self.node.get_parameter('synchronize_target')
+        self.add_initial_target = self.node.get_parameter('synchronize_target')
 
         # timer calbacks
         timer_period = 0.5  # seconds
         self.timer = self.node.create_timer(timer_period, self.timer_callback)
 
-
         # Set to True to save data for post-processing
-        save_log = True
+        self.save_log = True
 
         # Set to True to generate a plot immediately
-        plot = True
+        self.plot = True
         
         rclpy.spin(self.node)
         # node.destroy_node()
@@ -117,7 +108,7 @@ class RLSController(Controller):
 
     def timer_callback(self):
 
-        if rclpy.ok() and self.controller_state != ControllerStates.stop:
+        if self.controller_state != ControllerStates.stop:
             ready = False
 
             self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
@@ -144,12 +135,6 @@ class RLSController(Controller):
                     self.publish_setpoint()
                     self.t += self.delta_t
 
-                    # # Check if we need to wait for simulator initialization
-                    # if wait_for_simulator_initialization:
-                    #     rclpy.sleep(4)
-                    #     count -= 1
-                    #     if count < 0:
-                    #         wait_for_simulator_initialization = False
                 else:
                     self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
             else:
@@ -161,16 +146,16 @@ class RLSController(Controller):
                     self.publish_setpoint()
 
 
-        # if self.controller_state == ControllerStates.stop:
-        #     self.node.get_logger().info('controller state is set to STOP. Terminating.')
-        #     # if save_log:
-        #     #     filename = rclpy.get_param('filename')
-        #     #     additional_info = f"_{target}_T{T}_f{f}_gam{round(self.node.gamma,2)}_W{W}_mode{mode}"
-        #     #     new_filename = filename + additional_info
-        #     #     self.node.save_data(new_filename)
-        #     #     time.sleep(2)
-        #     #     if plot:
-        #     #        os.system("ros2 run crazyflie_online_tracker plot.py")
+        elif self.controller_state == ControllerStates.stop:
+            self.node.get_logger().info('controller state is set to STOP. Terminating.')
+            if self.save_log:
+                filename = rclpy.get_param('filename')
+                additional_info = f"_{target}_T{T}_f{f}_gam{round(self.node.gamma,2)}_W{W}_mode{mode}"
+                new_filename = filename + additional_info
+                self.node.save_data(new_filename)
+                time.sleep(2)
+                if self.plot:
+                   os.system("ros2 run crazyflie_online_tracker plot.py")
 
 
     def get_new_states(self):
@@ -285,7 +270,6 @@ class RLSController(Controller):
 
     def compute_setpoint(self):
         if self.controller_state == ControllerStates.normal:
-            self.node.get_logger().info("controller state: normal")
             drone_state = self.drone_state_log[-1]
             target_state = self.target_state_log[-1]
             error = drone_state - target_state
