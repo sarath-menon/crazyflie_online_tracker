@@ -120,6 +120,9 @@ class RLSController(Controller):
         if rclpy.ok() and self.controller_state != ControllerStates.stop:
             ready = False
 
+            self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
+            self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
+
             # Check if initial target is to be added and if the target state log is empty
             if self.add_initial_target and len(self.target_state_raw_log)==0:
                 initial_target = np.zeros((9, 1))
@@ -140,12 +143,13 @@ class RLSController(Controller):
                         self.RLS_update()
                     self.publish_setpoint()
                     self.t += self.delta_t
-                    # Check if we need to wait for simulator initialization
-                    if wait_for_simulator_initialization:
-                        rclpy.sleep(4)
-                        count -= 1
-                        if count < 0:
-                            wait_for_simulator_initialization = False
+
+                    # # Check if we need to wait for simulator initialization
+                    # if wait_for_simulator_initialization:
+                    #     rclpy.sleep(4)
+                    #     count -= 1
+                    #     if count < 0:
+                    #         wait_for_simulator_initialization = False
                 else:
                     self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
             else:
@@ -289,25 +293,34 @@ class RLSController(Controller):
             error_feedback = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
             self.predict_future_targets()
             future_disturbance_feedback = np.zeros((4,1))
+
             for i in range(self.W):
                 future_disturbance_feedback -= self.M_optimal_all[i]@self.disturbances_predicted[i]
                 # self.node.get_logger().info('future_disturbance '+str(i)+ ' : '+str(self.disturbances_predicted[i]))
                 # self.node.get_logger().info('future_disturbance_feedback '+str(i)+ ' : '+str(self.M_optimal_all[i]@self.disturbances_predicted[i]))
+            
             roll_rate = future_disturbance_feedback[1].copy()
             pitch_rate = future_disturbance_feedback[2].copy()
+
+
             future_disturbance_feedback[1] = pitch_rate
             future_disturbance_feedback[2] = roll_rate
 
             action = error_feedback + future_disturbance_feedback
             self.action_DF_log.append(future_disturbance_feedback)
             self.action_log.append(action)
+
+
             # self.node.get_logger().info('optimal action[RLS]: '+str(action))
             # convert command from numpy array to ros message
             setpoint = CommandOuter()
-            setpoint.thrust = action[0]
-            setpoint.omega.x = action[1] # pitch rate
-            setpoint.omega.y = action[2] # roll rate
-            setpoint.omega.z = action[3] # yaw rate
+
+            setpoint.thrust = float(action[0])
+            setpoint.omega.x = float(action[1]) # pitch rate
+            setpoint.omega.y = float(action[2]) # roll rate
+            setpoint.omega.z = float(action[3]) # yaw rate
+
+
         elif self.controller_state == ControllerStates.takeoff:
             self.node.get_logger().info("controller state: takeoff")
             drone_state = self.drone_state_raw_log[-1]
@@ -324,6 +337,9 @@ class RLSController(Controller):
             self.setpoint.is_last_command = True
         else:
             self.compute_setpoint()
+
+        
+        self.node.get_logger().info("Publishing setpoint")
         self.controller_command_pub.publish(self.setpoint)
 
     def save_data(self, filename):
