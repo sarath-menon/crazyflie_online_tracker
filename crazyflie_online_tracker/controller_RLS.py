@@ -116,8 +116,9 @@ class RLSController(Controller):
         # rclpy.shutdown()
 
     def timer_callback(self):
+        self.node.get_logger().info('selva')
 
-        if self.controller_state != ControllerStates.stop:
+        if rclpy.ok() and self.controller_state != ControllerStates.stop:
             ready = False
 
             # Check if initial target is to be added and if the target state log is empty
@@ -130,7 +131,7 @@ class RLSController(Controller):
             if len(self.drone_state_raw_log)>0 and \
                 len(self.target_state_raw_log)>0:
                 ready = True
-
+                
             # Check if current time is less than or equal to T
             if self.t <= T:
                 if ready:
