@@ -211,28 +211,31 @@ class Controller():
         self.system_output_raw_log.append(output)
 
     def callback_state_target(self, data):
+
+        self.node.get_logger().info('Received target state.')
+
         target_state = np.zeros((9, 1))
-        target_state[StateIndex.x] = data.pose.position.x
-        target_state[StateIndex.y] = data.pose.position.y
-        target_state[StateIndex.z] = data.pose.position.z
-        q1 = data.pose.orientation.x
-        q2 = data.pose.orientation.y
-        q3 = data.pose.orientation.z
-        q0 = data.pose.orientation.w
+        target_state[StateIndex.x] = float(data.pose.position.x)
+        target_state[StateIndex.y] = float(data.pose.position.y)
+        target_state[StateIndex.z] = float(data.pose.position.z)
+        q1 = float(data.pose.orientation.x)
+        q2 = float(data.pose.orientation.y)
+        q3 = float(data.pose.orientation.z)
+        q0 = float(data.pose.orientation.w)
         r = Rotation.from_quat([q1,q2,q3,q0])
         euler = r.as_euler('ZYX')
-        target_state[StateIndex.roll] = euler[2]
-        target_state[StateIndex.pitch] = euler[1]
-        target_state[StateIndex.yaw] = euler[0]
-        target_state[StateIndex.vx] = data.velocity.linear.x
-        target_state[StateIndex.vy] = data.velocity.linear.y
-        target_state[StateIndex.vz] = data.velocity.linear.z
+        target_state[StateIndex.roll] = float(euler[2])
+        target_state[StateIndex.pitch] = float(euler[1])
+        target_state[StateIndex.yaw] = float(euler[0])
+        target_state[StateIndex.vx] = float(data.velocity.linear.x)
+        target_state[StateIndex.vy] = float(data.velocity.linear.y)
+        target_state[StateIndex.vz] = float(data.velocity.linear.z)
         # target_state[StateIndex.z] = self.hover_height
         self.target_state_raw_log.append(target_state)
 
     def callback_controller_state(self, data: CommandOuter):
 
-        self.node.get_logger().info(f"Controller state: {data.state}")
+        self.node.get_logger().info(f"Received Controller state: {data.state}")
 
         self.controller_state = data.state
         if self.controller_state == ControllerStates.normal:
