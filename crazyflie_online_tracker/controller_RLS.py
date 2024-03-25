@@ -87,10 +87,12 @@ class RLSController(Controller):
          # declare params
         self.node.declare_parameter('add_initial_target', False)
         self.node.declare_parameter('synchronize_target', False)
+        self.node.declare_parameter('filename', 'Filename')
 
         # get params
         self.add_initial_target = self.node.get_parameter('add_initial_target')
         self.add_initial_target = self.node.get_parameter('synchronize_target')
+        self.add_initial_target = self.node.get_parameter('filename')
 
         # timer calbacks
         timer_period = 0.5  # seconds
@@ -149,10 +151,10 @@ class RLSController(Controller):
         elif self.controller_state == ControllerStates.stop:
             self.node.get_logger().info('controller state is set to STOP. Terminating.')
             if self.save_log:
-                filename = rclpy.get_param('filename')
-                additional_info = f"_{target}_T{T}_f{f}_gam{round(self.node.gamma,2)}_W{W}_mode{mode}"
-                new_filename = filename + additional_info
-                self.node.save_data(new_filename)
+                filename = self.node.get_parameter('filename')
+                additional_info = f"_{target}_T{T}_f{f}_gam{round(self.gamma,2)}_W{W}_mode{mode}"
+                new_filename = filename.get_parameter_value().string_value + additional_info
+                self.save_data(new_filename)
                 time.sleep(2)
                 if self.plot:
                    os.system("ros2 run crazyflie_online_tracker plot.py")
@@ -323,7 +325,7 @@ class RLSController(Controller):
             self.compute_setpoint()
 
         
-        self.node.get_logger().info("Publishing setpoint")
+        # self.node.get_logger().info("Publishing setpoint")
         self.controller_command_pub.publish(self.setpoint)
 
     def save_data(self, filename):
@@ -364,7 +366,7 @@ class RLSController(Controller):
                      default_action_log=np.array(self.default_action_log),
                      optimal_action_log=np.array(self.optimal_action_log),
                      learnt_S_log = np.array(self.S_target_aug_all))
-        rclpy.loginfo("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
+        self.node.get_logger().info("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
 
 def main(args=None):
     controller = RLSController()
