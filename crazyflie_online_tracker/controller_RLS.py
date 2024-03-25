@@ -10,8 +10,9 @@ from scipy import linalg
 from crazyflie_online_tracker_interfaces.msg import CommandOuter
 from .controller import Controller, ControllerStates
 from datetime import datetime
+from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 
-
+import time
 
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
@@ -39,11 +40,25 @@ class RLSController(Controller):
     This is the proposed PLOT controller without an affine term.
     '''
     def __init__(self):
-        super().__init__('RLS_controller')
+        super().__init__()
+
+
+        rclpy.init()
+        self.node = rclpy.create_node("RLSController")
+
+        self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
+        self.controller_command_pub = self.node.create_publisher(CommandOuter, 'controllerCommand', 10)
+        self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerStateKF', 10)
+
+        self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
+        self.target_state_sub = self.node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
+
+        # YAML params
         self.m = m
         self.gamma = gamma # forgetting factor
         self.W = W # prediction horizon
         self.Df = np.inf
+
 
         # initialize target dynamics estimation
         self.idx_of_interest = [0, 1, 2, 3, 4, 5] # the indices of target states that can be measured and learned. In our case is [x,y,z,vx,vy,vz]
@@ -69,6 +84,81 @@ class RLSController(Controller):
 
         self.disturbances_predicted = []
 
+         # declare params
+        self.node.declare_parameter('add_initial_target', False)
+        self.node.declare_parameter('synchronize_target', False)
+        self.node.declare_parameter('filename', 'Filename')
+
+        # get params
+        self.add_initial_target = self.node.get_parameter('add_initial_target')
+        self.add_initial_target = self.node.get_parameter('synchronize_target')
+        self.add_initial_target = self.node.get_parameter('filename')
+
+        # timer calbacks
+        timer_period = 0.5  # seconds
+        self.timer = self.node.create_timer(timer_period, self.timer_callback)
+
+        # Set to True to save data for post-processing
+        self.save_log = True
+
+        # Set to True to generate a plot immediately
+        self.plot = True
+        
+        rclpy.spin(self.node)
+        # node.destroy_node()
+        # rclpy.shutdown()
+
+    def timer_callback(self):
+
+        if self.controller_state != ControllerStates.stop:
+            ready = False
+
+            self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
+            self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
+
+            # Check if initial target is to be added and if the target state log is empty
+            if self.add_initial_target and len(self.target_state_raw_log)==0:
+                initial_target = np.zeros((9, 1))
+                initial_target[:3] = self.desired_pos.reshape((3, 1))
+                self.target_state_raw_log.append(initial_target)
+
+            # Check if both drone state log and target state log are not empty
+            if len(self.drone_state_raw_log)>0 and \
+                len(self.target_state_raw_log)>0:
+                ready = True
+                
+            # Check if current time is less than or equal to T
+            if self.t <= T:
+                if ready:
+                    # Check if the controller state is normal
+                    if self.controller_state == ControllerStates.normal:
+                        self.get_new_states()
+                        self.RLS_update()
+                    self.publish_setpoint()
+                    self.t += self.delta_t
+
+                else:
+                    self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
+            else:
+                # Check if the controller state is normal
+                if self.controller_state == ControllerStates.normal:
+                    self.publish_setpoint(is_last_command=True)
+                    self.node.get_logger().info('Simulation finished.')
+                else:
+                    self.publish_setpoint()
+
+
+        elif self.controller_state == ControllerStates.stop:
+            self.node.get_logger().info('controller state is set to STOP. Terminating.')
+            if self.save_log:
+                filename = self.node.get_parameter('filename')
+                additional_info = f"_{target}_T{T}_f{f}_gam{round(self.gamma,2)}_W{W}_mode{mode}"
+                new_filename = filename.get_parameter_value().string_value + additional_info
+                self.save_data(new_filename)
+                time.sleep(2)
+                if self.plot:
+                   os.system("ros2 run crazyflie_online_tracker plot.py")
+
 
     def get_new_states(self):
         '''
@@ -76,7 +166,7 @@ class RLSController(Controller):
         '''
         drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]
-        if self.get_parameter('synchronize_target').get_parameter_value().bool_value:
+        if self.node.get_parameter('synchronize_target').get_parameter_value().bool_value:
             # this block of code somehow helps to compensate for the differences of the ros node initialization times
             # e.g. for SOME horizon lengths, the target states used for estimation is [0.3,0.6,0.9,...], while for others it is [0.3,0.3,0.6,0.9,...]
             # this impacts the regret comparison of controllers with different W tracking the same target
@@ -86,9 +176,9 @@ class RLSController(Controller):
                 target_state = self.target_state_raw_log[-1]
         self.drone_state_log.append(drone_state)
         self.target_state_log.append(target_state)
-        self.get_logger().info("current time: " + str(self.t))
-        # self.get_logger().info("current state[RLS]: " + str(drone_state))
-        # self.get_logger().info("observe target[RLS]:" + str(target_state))
+        self.node.get_logger().info("current time: " + str(self.t))
+        # self.node.get_logger().info("current state[RLS]: " + str(drone_state))
+        # self.node.get_logger().info("observe target[RLS]:" + str(target_state))
 
         # compute disturbance w_t according to the latest drone and target state estimation
         if len(self.target_state_log) < 2:
@@ -106,8 +196,8 @@ class RLSController(Controller):
             if len(self.pred_log) >= k:
                 pred_state = self.pred_log[-k][k - 1]
                 error[k - 1] = pred_state - target_state[self.idx_of_interest]
-                # self.get_logger().info('predicted target based on r_{t-' + str(k)+'}: '+str(pred_state))
-        # self.get_logger().info('prediction error: '+str(error))
+                # self.node.get_logger().info('predicted target based on r_{t-' + str(k)+'}: '+str(pred_state))
+        # self.node.get_logger().info('prediction error: '+str(error))
         self.error_log.append(error)
 
     def RLS_update(self):
@@ -182,7 +272,6 @@ class RLSController(Controller):
 
     def compute_setpoint(self):
         if self.controller_state == ControllerStates.normal:
-            self.get_logger().info("controller state: normal")
             drone_state = self.drone_state_log[-1]
             target_state = self.target_state_log[-1]
             error = drone_state - target_state
@@ -190,31 +279,40 @@ class RLSController(Controller):
             error_feedback = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
             self.predict_future_targets()
             future_disturbance_feedback = np.zeros((4,1))
+
             for i in range(self.W):
                 future_disturbance_feedback -= self.M_optimal_all[i]@self.disturbances_predicted[i]
-                # self.get_logger().info('future_disturbance '+str(i)+ ' : '+str(self.disturbances_predicted[i]))
-                # self.get_logger().info('future_disturbance_feedback '+str(i)+ ' : '+str(self.M_optimal_all[i]@self.disturbances_predicted[i]))
+                # self.node.get_logger().info('future_disturbance '+str(i)+ ' : '+str(self.disturbances_predicted[i]))
+                # self.node.get_logger().info('future_disturbance_feedback '+str(i)+ ' : '+str(self.M_optimal_all[i]@self.disturbances_predicted[i]))
+            
             roll_rate = future_disturbance_feedback[1].copy()
             pitch_rate = future_disturbance_feedback[2].copy()
+
+
             future_disturbance_feedback[1] = pitch_rate
             future_disturbance_feedback[2] = roll_rate
 
             action = error_feedback + future_disturbance_feedback
             self.action_DF_log.append(future_disturbance_feedback)
             self.action_log.append(action)
-            # self.get_logger().info('optimal action[RLS]: '+str(action))
+
+
+            # self.node.get_logger().info('optimal action[RLS]: '+str(action))
             # convert command from numpy array to ros message
             setpoint = CommandOuter()
-            setpoint.thrust = action[0]
-            setpoint.omega.x = action[1] # pitch rate
-            setpoint.omega.y = action[2] # roll rate
-            setpoint.omega.z = action[3] # yaw rate
+
+            setpoint.thrust = float(action[0])
+            setpoint.omega.x = float(action[1]) # pitch rate
+            setpoint.omega.y = float(action[2]) # roll rate
+            setpoint.omega.z = float(action[3]) # yaw rate
+
+
         elif self.controller_state == ControllerStates.takeoff:
-            self.get_logger().info("controller state: takeoff")
+            self.node.get_logger().info("controller state: takeoff")
             drone_state = self.drone_state_raw_log[-1]
             setpoint = self.takeoff(drone_state)
         elif self.controller_state == ControllerStates.landing:
-            self.get_logger().info("controller state: landing")
+            self.node.get_logger().info("controller state: landing")
             drone_state = self.drone_state_raw_log[-1]
             setpoint = self.landing(drone_state)
         self.setpoint = setpoint
@@ -225,6 +323,9 @@ class RLSController(Controller):
             self.setpoint.is_last_command = True
         else:
             self.compute_setpoint()
+
+        
+        # self.node.get_logger().info("Publishing setpoint")
         self.controller_command_pub.publish(self.setpoint)
 
     def save_data(self, filename):
@@ -265,65 +366,15 @@ class RLSController(Controller):
                      default_action_log=np.array(self.default_action_log),
                      optimal_action_log=np.array(self.optimal_action_log),
                      learnt_S_log = np.array(self.S_target_aug_all))
-        rclpy.loginfo("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
+        self.node.get_logger().info("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
 
 def main(args=None):
-    rclpy.init(args=args)
-    RLS_controller = RLSController()
-    wait_for_simulator_initialization = rclpy.get_param('wait_for_simulator_initialization')
-    add_initial_target = rclpy.get_param('add_initial_target')
+    controller = RLSController()
 
-    count = 5
-    rate = rclpy.Rate(f)
 
-    rclpy.sleep(2)
-    # Set to True to save data for post-processing
-    save_log = True
+   
 
-    # Set to True to generate a plot immediately
-    plot = True
 
-    while rclpy.ok() and RLS_controller.controller_state != ControllerStates.stop:
-        ready = False
-        if add_initial_target and len(RLS_controller.target_state_raw_log)==0:
-            initial_target = np.zeros((9, 1))
-            initial_target[:3] = RLS_controller.desired_pos.reshape((3, 1))
-            RLS_controller.target_state_raw_log.append(initial_target)
-        if len(RLS_controller.drone_state_raw_log)>0 and \
-            len(RLS_controller.target_state_raw_log)>0:
-            ready = True
-        if RLS_controller.t <= T:
-            if ready:
-                if RLS_controller.controller_state == ControllerStates.normal:
-                    RLS_controller.get_new_states()
-                    RLS_controller.RLS_update()
-                RLS_controller.publish_setpoint()
-                RLS_controller.t += RLS_controller.delta_t
-                if wait_for_simulator_initialization:
-                    rclpy.sleep(4)
-                    count -= 1
-                    if count < 0:
-                        wait_for_simulator_initialization = False
-            else:
-                rclpy.loginfo('No drone or target state estimation is available. Skipping.')
-        else:
-            if RLS_controller.controller_state == ControllerStates.normal:
-                RLS_controller.publish_setpoint(is_last_command=True)
-                rclpy.loginfo('Simulation finished.')
-            else:
-                RLS_controller.publish_setpoint()
-        rate.sleep()
-
-    if RLS_controller.controller_state == ControllerStates.stop:
-        rclpy.loginfo('controller state is set to STOP. Terminating.')
-        if save_log:
-            filename = rclpy.get_param('filename')
-            additional_info = f"_{target}_T{T}_f{f}_gam{round(RLS_controller.gamma,2)}_W{W}_mode{mode}"
-            new_filename = filename + additional_info
-            RLS_controller.save_data(new_filename)
-            time.sleep(2)
-            if plot:
-               os.system("ros2 run crazyflie_online_tracker plot.py")
 
 if __name__ == '__main__':
     main()

@@ -34,8 +34,10 @@ filtering = yaml_data['filtering']
 is_sim = yaml_data['is_sim']
 
 
-class Controller(ABC):
+class Controller():
     def __init__(self):
+
+        super().__init__()
         self.drone_state_raw_log = [] # restore all received drone state measurements.
         self.target_state_raw_log = [] # restore all received target state measurements.
         self.drone_state_log = [] # restore drone states that are used for computing the setpoints(at 10Hz)
@@ -55,16 +57,21 @@ class Controller(ABC):
         self.g = g
         self.m = m
 
+        # ROS node
+        self.node = None
+
         # INITIALIZATION OF CONTROLLER STATE
         self.controller_state = ControllerStates.stop
 
-        self.controller_state_sub = self.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
-        self.controller_command_pub = self.create_publisher(CommandOuter, 'controllerCommand', 10)
-        self.controller_state_pub = self.create_publisher(ControllerState, 'controllerStateKF', 10)
+        self.controller_state_sub = None
+        self.controller_command_pub = None
+        self.controller_state_pub = None
 
-        self.drone_state_sub = self.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
-        self.target_state_sub = self.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
-        self.create_subscription(Empty, 'shutdown', self.safe_shutdown, 10)
+        self.drone_state_sub = None
+        self.target_state_sub = None
+
+        # for shutfown, fix later
+        # self.create_subscription(Empty, 'shutdown', self.safe_shutdown, 10)
 
 
         self.t = 0  
@@ -144,6 +151,8 @@ class Controller(ABC):
         pass
 
     def callback_state_drone(self, data):
+        # self.node.get_logger().info('Received drone state.')
+
         drone_state = np.zeros((9, 1))
         drone_state[StateIndex.x] = data.pose.position.x
         drone_state[StateIndex.y] = data.pose.position.y
@@ -204,35 +213,39 @@ class Controller(ABC):
         self.system_output_raw_log.append(output)
 
     def callback_state_target(self, data):
+
+        # self.node.get_logger().info('Received target state.')
+
         target_state = np.zeros((9, 1))
-        target_state[StateIndex.x] = data.pose.position.x
-        target_state[StateIndex.y] = data.pose.position.y
-        target_state[StateIndex.z] = data.pose.position.z
-        q1 = data.pose.orientation.x
-        q2 = data.pose.orientation.y
-        q3 = data.pose.orientation.z
-        q0 = data.pose.orientation.w
+        target_state[StateIndex.x] = float(data.pose.position.x)
+        target_state[StateIndex.y] = float(data.pose.position.y)
+        target_state[StateIndex.z] = float(data.pose.position.z)
+        q1 = float(data.pose.orientation.x)
+        q2 = float(data.pose.orientation.y)
+        q3 = float(data.pose.orientation.z)
+        q0 = float(data.pose.orientation.w)
         r = Rotation.from_quat([q1,q2,q3,q0])
         euler = r.as_euler('ZYX')
-        target_state[StateIndex.roll] = euler[2]
-        target_state[StateIndex.pitch] = euler[1]
-        target_state[StateIndex.yaw] = euler[0]
-        target_state[StateIndex.vx] = data.velocity.linear.x
-        target_state[StateIndex.vy] = data.velocity.linear.y
-        target_state[StateIndex.vz] = data.velocity.linear.z
+        target_state[StateIndex.roll] = float(euler[2])
+        target_state[StateIndex.pitch] = float(euler[1])
+        target_state[StateIndex.yaw] = float(euler[0])
+        target_state[StateIndex.vx] = float(data.velocity.linear.x)
+        target_state[StateIndex.vy] = float(data.velocity.linear.y)
+        target_state[StateIndex.vz] = float(data.velocity.linear.z)
         # target_state[StateIndex.z] = self.hover_height
+
         self.target_state_raw_log.append(target_state)
 
     def callback_controller_state(self, data: CommandOuter):
         self.controller_state = data.state
         if self.controller_state == ControllerStates.normal:
-            self.get_logger().info('Controller state is changed to NORMAL.')
+            self.node.get_logger().info('Controller state is changed to NORMAL.')
         elif self.controller_state == ControllerStates.takeoff:
-            self.get_logger().info('Controller state is changed to TAKEOFF.')
+            self.node.get_logger().info('Controller state is changed to TAKEOFF.')
         elif self.controller_state == ControllerStates.landing:
-            self.get_logger().info('Controller state is changed to LANDING.')
+            self.node.get_logger().info('Controller state is changed to LANDING.')
         elif self.controller_state == ControllerStates.stop:
-            self.get_logger().info('Controller state is changed to STOP.')
+            self.node.get_logger().info('Controller state is changed to STOP.')
 
     def safe_shutdown(self):
         # place holder

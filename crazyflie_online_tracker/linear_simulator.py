@@ -10,9 +10,13 @@ import os
 from scipy.spatial.transform import Rotation
 from scipy.linalg import solve_discrete_are
 from crazyflie_online_tracker_interfaces.msg import CommandOuter, ControllerState, CrazyflieState
-from controller import ControllerStates
-from actuator import Actuator
+from .controller import ControllerStates
+from .actuator import Actuator
 from scipy.linalg import inv
+import sys
+from rclpy.node import Node
+
+
 
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
@@ -93,7 +97,7 @@ if filtering:
 
 class CrazyflieActuator(Actuator):
     def __init__(self):
-        super().__init__('crazyflie_actuator')
+        super().__init__()
         self.curr_state = np.zeros((9, 1))
 
         # set initial state of the simulation
@@ -102,18 +106,26 @@ class CrazyflieActuator(Actuator):
         self.last_command_received = False
 
         # ros2 config
-        self.setpoint_sub = self.create_subscription(CommandOuter, "controllerCommand", self.callback_command, 10)
-        self.controller_state_pub = self.create_publisher(ControllerState, 'controllerState', 10)
-        self.drone_state_pub = self.create_publisher(CrazyflieState, 'crazyflieState', 10)
-        self.filtered_drone_state_pub = self.create_publisher(CrazyflieState, 'FilteredCrazyflieState', 10)
-        self.system_output_pub = self.create_publisher(CrazyflieState, 'SystemOutput', 10)
+        self.node = rclpy.create_node("linear_simulator")
+        self.setpoint_sub = self.node.create_subscription(CommandOuter, "controllerCommand", self.callback_command, 10)
+        self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerState', 10)
+        self.drone_state_pub = self.node.create_publisher(CrazyflieState, 'crazyflieState', 10)
+        self.filtered_drone_state_pub = self.node.create_publisher(CrazyflieState, 'FilteredCrazyflieState', 10)
+        self.system_output_pub = self.node.create_publisher(CrazyflieState, 'SystemOutput', 10)
 
 
+        # Create a new controller state and set it to normal
         controller_state = ControllerState()
         controller_state.state = ControllerStates.normal
+
+        # Publish the controller state
         self.controller_state_pub.publish(controller_state)
+
+        # publish state
         state_msg = self.state_vec_to_msg(self.curr_state)
         self.drone_state_pub.publish(state_msg)
+
+
         if filtering:
             # Initialize the estimated state and the action
             self.estimated_curr_state = self.curr_state
@@ -130,6 +142,15 @@ class CrazyflieActuator(Actuator):
             filtered_curr_state_msg = self.state_vec_to_msg(filtered_curr_state)
             self.filtered_drone_state_pub.publish(filtered_curr_state_msg)
 
+        rclpy.spin(self.node)
+
+        # Destroy the node explicitly
+        # (optional - otherwise it will be done automatically
+        # when the garbage collector destroys the node object)
+        self.node.destroy_node()
+        rclpy.shutdown()
+
+
     def kalman_filtering(self, measurement, action, kalman_gain):
         # Prediction step
         predicted_next_state = A @ (self.estimated_curr_state - self.z_ss)+ B @ action
@@ -143,7 +164,8 @@ class CrazyflieActuator(Actuator):
         return filtered_next_state
 
     def callback_command(self, data):
-        self.get_logger().info('setpoint received')
+        self.node.get_logger().info('controller command received')
+
         # # don't send any more command if the crazyflie has already landed.
         if data.is_last_command or self.last_command_received:
             print('last command received')
@@ -158,6 +180,8 @@ class CrazyflieActuator(Actuator):
                  data.omega.z]).reshape((4, 1))
         next_state = A @ self.curr_state + B @ action
         next_state_msg = self.state_vec_to_msg(next_state)
+
+
         self.drone_state_pub.publish(next_state_msg)
         self.curr_state = next_state
 
@@ -176,18 +200,21 @@ class CrazyflieActuator(Actuator):
 
     def state_vec_to_msg(self, state_vector):
         state = CrazyflieState()
-        state.pose.position.x = state_vector[0]
-        state.pose.position.y = state_vector[1]
-        state.pose.position.z = state_vector[2]
-        r = Rotation.from_euler('ZYX', [state_vector[8][0], state_vector[7][0], state_vector[6][0]])
+
+        state.pose.position.x = float(state_vector[0])
+        state.pose.position.y = float(state_vector[1])
+        state.pose.position.z = float(state_vector[2])
+        
+        r = Rotation.from_euler('ZYX', [float(state_vector[8][0]), float(state_vector[7][0]), float(state_vector[6][0])])
         quaternion = r.as_quat()
-        state.pose.orientation.x = quaternion[0]
-        state.pose.orientation.y = quaternion[1]
-        state.pose.orientation.z = quaternion[2]
-        state.pose.orientation.w = quaternion[3]
-        state.velocity.linear.x = state_vector[3]
-        state.velocity.linear.y = state_vector[4]
-        state.velocity.linear.z = state_vector[5]
+        
+        state.pose.orientation.x = float(quaternion[0])
+        state.pose.orientation.y = float(quaternion[1])
+        state.pose.orientation.z = float(quaternion[2])
+        state.pose.orientation.w = float(quaternion[3])
+        state.velocity.linear.x = float(state_vector[3])
+        state.velocity.linear.y = float(state_vector[4])
+        state.velocity.linear.z = float(state_vector[5])
         return state
 
 
@@ -196,13 +223,13 @@ def main(args=None):
 
     minimal_publisher = CrazyflieActuator()
 
-    rclpy.spin(minimal_publisher)
+    # rclpy.spin(minimal_publisher)
 
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    minimal_publisher.destroy_node()
-    rclpy.shutdown()
+    # # Destroy the node explicitly
+    # # (optional - otherwise it will be done automatically
+    # # when the garbage collector destroys the node object)
+    # minimal_publisher.destroy_node()
+    # rclpy.shutdown()
     
 
 if __name__ == '__main__':
