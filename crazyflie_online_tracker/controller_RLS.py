@@ -100,6 +100,10 @@ class RLSController(Controller):
         filename = self.node.get_parameter('filename')
         synchronize_target = self.node.get_parameter('synchronize_target')
 
+        # timer calbacks
+        timer_period = 0.5  # seconds
+        self.timer = self.node.create_timer(timer_period, self.timer_callback)
+
         count = 5
         # rate = rclpy.Rate(f)
 
@@ -117,6 +121,9 @@ class RLSController(Controller):
 
 
         time.sleep(2)
+
+    def timer_callback(self):
+        self.node.get_logger().info('selva')
 
         # while rclpy.ok() and self.controller_state != ControllerStates.stop:
         #     ready = False
