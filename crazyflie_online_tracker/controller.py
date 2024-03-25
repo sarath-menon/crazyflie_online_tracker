@@ -37,6 +37,7 @@ is_sim = yaml_data['is_sim']
 class Controller():
     def __init__(self):
 
+        super().__init__()
         self.drone_state_raw_log = [] # restore all received drone state measurements.
         self.target_state_raw_log = [] # restore all received target state measurements.
         self.drone_state_log = [] # restore drone states that are used for computing the setpoints(at 10Hz)
@@ -55,6 +56,9 @@ class Controller():
         self.hover_yaw = 0
         self.g = g
         self.m = m
+
+        # ROS node
+        self.node = None
 
         # INITIALIZATION OF CONTROLLER STATE
         self.controller_state = ControllerStates.stop
@@ -227,6 +231,9 @@ class Controller():
         self.target_state_raw_log.append(target_state)
 
     def callback_controller_state(self, data: CommandOuter):
+
+        self.get_logger().info(f"Controller state: {data.state}")
+
         self.controller_state = data.state
         if self.controller_state == ControllerStates.normal:
             self.get_logger().info('Controller state is changed to NORMAL.')

@@ -12,6 +12,7 @@ from .controller import Controller, ControllerStates
 from datetime import datetime
 from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 
+import time
 
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
@@ -40,19 +41,22 @@ class RLSController(Controller):
     '''
     def __init__(self):
         super().__init__()
+
+        self.node = rclpy.create_node("RLSController")
+
+        self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
+        self.controller_command_pub = self.node.create_publisher(CommandOuter, 'controllerCommand', 10)
+        self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerStateKF', 10)
+
+        self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
+        self.target_state_sub = self.node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
+
+        # YAML params
         self.m = m
         self.gamma = gamma # forgetting factor
         self.W = W # prediction horizon
         self.Df = np.inf
 
-        node = rclpy.create_node("RLSController")
-
-        self.controller_state_sub = node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
-        self.controller_command_pub = node.create_publisher(CommandOuter, 'controllerCommand', 10)
-        self.controller_state_pub = node.create_publisher(ControllerState, 'controllerStateKF', 10)
-
-        self.drone_state_sub = node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
-        self.target_state_sub = node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
 
         # initialize target dynamics estimation
         self.idx_of_interest = [0, 1, 2, 3, 4, 5] # the indices of target states that can be measured and learned. In our case is [x,y,z,vx,vy,vz]
@@ -80,24 +84,25 @@ class RLSController(Controller):
 
 
          # declare params
-        node.declare_parameter('publish_frequency', 20.0)
-        node.declare_parameter('wait_for_simulator_initialization', False)
-        node.declare_parameter('add_initial_target', False)
-        node.declare_parameter('filename', "filename")
-        node.declare_parameter('synchronize_target', False)
+        Zznode.declare_parameter('publish_frequency', 20.0)
+        self.node.declare_parameter('wait_for_simulator_initialization', False)
+        self.node.declare_parameter('add_initial_target', False)
+        self.node.declare_parameter('filename', "filename")
+        self.node.declare_parameter('synchronize_target', False)
         
 
         # get params
-        publish_frequency = node.get_parameter('publish_frequency')
-        wait_for_simulator_initialization  = node.get_parameter('wait_for_simulator_initialization')
-        add_initial_target = node.get_parameter('add_initial_target')
-        filename = node.get_parameter('filename')
-        synchronize_target = node.get_parameter('synchronize_target')
+        publish_frequency = self.node.get_parameter('publish_frequency')
+        wait_for_simulator_initialization  = self.node.get_parameter('wait_for_simulator_initialization')
+        add_initial_target = self.node.get_parameter('add_initial_target')
+        filename = self.node.get_parameter('filename')
+        synchronize_target = self.node.get_parameter('synchronize_target')
 
         count = 5
         # rate = rclpy.Rate(f)
 
-        # rclpy.sleep(2)
+        time.sleep(2)
+
         # Set to True to save data for post-processing
         save_log = True
 
@@ -139,16 +144,16 @@ class RLSController(Controller):
             # Destroy the node explicitly
             # (optional - otherwise it will be done automatically
             # when the garbage collector destroys the node object)
-            node.destroy_node()
+            self.node.destroy_node()
             rclpy.shutdown()
 
         if self.controller_state == ControllerStates.stop:
-            node.get_logger().info('controller state is set to STOP. Terminating.')
+            self.node.get_logger().info('controller state is set to STOP. Terminating.')
             # if save_log:
             #     filename = rclpy.get_param('filename')
-            #     additional_info = f"_{target}_T{T}_f{f}_gam{round(node.gamma,2)}_W{W}_mode{mode}"
+            #     additional_info = f"_{target}_T{T}_f{f}_gam{round(self.node.gamma,2)}_W{W}_mode{mode}"
             #     new_filename = filename + additional_info
-            #     node.save_data(new_filename)
+            #     self.node.save_data(new_filename)
             #     time.sleep(2)
             #     if plot:
             #        os.system("ros2 run crazyflie_online_tracker plot.py")
