@@ -114,13 +114,18 @@ class CrazyflieActuator(Actuator):
         self.system_output_pub = node.create_publisher(CrazyflieState, 'SystemOutput', 10)
 
 
+        # Create a new controller state and set it to normal
         controller_state = ControllerState()
         controller_state.state = ControllerStates.normal
+
+        # Publish the controller state
         self.controller_state_pub.publish(controller_state)
+
+        # publish state
         state_msg = self.state_vec_to_msg(self.curr_state)
-
-
         self.drone_state_pub.publish(state_msg)
+
+
         if filtering:
             # Initialize the estimated state and the action
             self.estimated_curr_state = self.curr_state
