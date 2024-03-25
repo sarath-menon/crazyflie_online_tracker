@@ -185,9 +185,9 @@ class RLSController(Controller):
                 target_state = self.target_state_raw_log[-1]
         self.drone_state_log.append(drone_state)
         self.target_state_log.append(target_state)
-        self.get_logger().info("current time: " + str(self.t))
-        # self.get_logger().info("current state[RLS]: " + str(drone_state))
-        # self.get_logger().info("observe target[RLS]:" + str(target_state))
+        self.node.get_logger().info("current time: " + str(self.t))
+        # self.node.get_logger().info("current state[RLS]: " + str(drone_state))
+        # self.node.get_logger().info("observe target[RLS]:" + str(target_state))
 
         # compute disturbance w_t according to the latest drone and target state estimation
         if len(self.target_state_log) < 2:
@@ -205,8 +205,8 @@ class RLSController(Controller):
             if len(self.pred_log) >= k:
                 pred_state = self.pred_log[-k][k - 1]
                 error[k - 1] = pred_state - target_state[self.idx_of_interest]
-                # self.get_logger().info('predicted target based on r_{t-' + str(k)+'}: '+str(pred_state))
-        # self.get_logger().info('prediction error: '+str(error))
+                # self.node.get_logger().info('predicted target based on r_{t-' + str(k)+'}: '+str(pred_state))
+        # self.node.get_logger().info('prediction error: '+str(error))
         self.error_log.append(error)
 
     def RLS_update(self):
@@ -281,7 +281,7 @@ class RLSController(Controller):
 
     def compute_setpoint(self):
         if self.controller_state == ControllerStates.normal:
-            self.get_logger().info("controller state: normal")
+            self.node.get_logger().info("controller state: normal")
             drone_state = self.drone_state_log[-1]
             target_state = self.target_state_log[-1]
             error = drone_state - target_state
@@ -291,8 +291,8 @@ class RLSController(Controller):
             future_disturbance_feedback = np.zeros((4,1))
             for i in range(self.W):
                 future_disturbance_feedback -= self.M_optimal_all[i]@self.disturbances_predicted[i]
-                # self.get_logger().info('future_disturbance '+str(i)+ ' : '+str(self.disturbances_predicted[i]))
-                # self.get_logger().info('future_disturbance_feedback '+str(i)+ ' : '+str(self.M_optimal_all[i]@self.disturbances_predicted[i]))
+                # self.node.get_logger().info('future_disturbance '+str(i)+ ' : '+str(self.disturbances_predicted[i]))
+                # self.node.get_logger().info('future_disturbance_feedback '+str(i)+ ' : '+str(self.M_optimal_all[i]@self.disturbances_predicted[i]))
             roll_rate = future_disturbance_feedback[1].copy()
             pitch_rate = future_disturbance_feedback[2].copy()
             future_disturbance_feedback[1] = pitch_rate
@@ -301,7 +301,7 @@ class RLSController(Controller):
             action = error_feedback + future_disturbance_feedback
             self.action_DF_log.append(future_disturbance_feedback)
             self.action_log.append(action)
-            # self.get_logger().info('optimal action[RLS]: '+str(action))
+            # self.node.get_logger().info('optimal action[RLS]: '+str(action))
             # convert command from numpy array to ros message
             setpoint = CommandOuter()
             setpoint.thrust = action[0]
@@ -309,11 +309,11 @@ class RLSController(Controller):
             setpoint.omega.y = action[2] # roll rate
             setpoint.omega.z = action[3] # yaw rate
         elif self.controller_state == ControllerStates.takeoff:
-            self.get_logger().info("controller state: takeoff")
+            self.node.get_logger().info("controller state: takeoff")
             drone_state = self.drone_state_raw_log[-1]
             setpoint = self.takeoff(drone_state)
         elif self.controller_state == ControllerStates.landing:
-            self.get_logger().info("controller state: landing")
+            self.node.get_logger().info("controller state: landing")
             drone_state = self.drone_state_raw_log[-1]
             setpoint = self.landing(drone_state)
         self.setpoint = setpoint
