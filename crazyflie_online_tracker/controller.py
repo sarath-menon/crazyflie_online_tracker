@@ -151,6 +151,8 @@ class Controller():
         pass
 
     def callback_state_drone(self, data):
+        self.node.get_logger().info('Received drone state.')
+
         drone_state = np.zeros((9, 1))
         drone_state[StateIndex.x] = data.pose.position.x
         drone_state[StateIndex.y] = data.pose.position.y
@@ -212,7 +214,7 @@ class Controller():
 
     def callback_state_target(self, data):
 
-        self.node.get_logger().info('Received target state.')
+        # self.node.get_logger().info('Received target state.')
 
         target_state = np.zeros((9, 1))
         target_state[StateIndex.x] = float(data.pose.position.x)
@@ -231,6 +233,7 @@ class Controller():
         target_state[StateIndex.vy] = float(data.velocity.linear.y)
         target_state[StateIndex.vz] = float(data.velocity.linear.z)
         # target_state[StateIndex.z] = self.hover_height
+
         self.target_state_raw_log.append(target_state)
 
     def callback_controller_state(self, data: CommandOuter):
