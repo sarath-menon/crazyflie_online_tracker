@@ -13,6 +13,9 @@ from crazyflie_online_tracker_interfaces.msg import CommandOuter, ControllerStat
 from .controller import ControllerStates
 from .actuator import Actuator
 from scipy.linalg import inv
+import sys
+from rclpy.node import Node
+
 
 
 # Load data from the YAML file
@@ -115,6 +118,8 @@ class CrazyflieActuator(Actuator):
         controller_state.state = ControllerStates.normal
         self.controller_state_pub.publish(controller_state)
         state_msg = self.state_vec_to_msg(self.curr_state)
+
+
         self.drone_state_pub.publish(state_msg)
         if filtering:
             # Initialize the estimated state and the action
@@ -169,6 +174,8 @@ class CrazyflieActuator(Actuator):
                  data.omega.z]).reshape((4, 1))
         next_state = A @ self.curr_state + B @ action
         next_state_msg = self.state_vec_to_msg(next_state)
+
+
         self.drone_state_pub.publish(next_state_msg)
         self.curr_state = next_state
 
@@ -187,18 +194,21 @@ class CrazyflieActuator(Actuator):
 
     def state_vec_to_msg(self, state_vector):
         state = CrazyflieState()
-        # state.pose.position.x = state_vector[0]
-        # state.pose.position.y = state_vector[1]
-        # state.pose.position.z = state_vector[2]
-        # r = Rotation.from_euler('ZYX', [state_vector[8][0], state_vector[7][0], state_vector[6][0]])
-        # quaternion = r.as_quat()
-        # state.pose.orientation.x = quaternion[0]
-        # state.pose.orientation.y = quaternion[1]
-        # state.pose.orientation.z = quaternion[2]
-        # state.pose.orientation.w = quaternion[3]
-        # state.velocity.linear.x = state_vector[3]
-        # state.velocity.linear.y = state_vector[4]
-        # state.velocity.linear.z = state_vector[5]
+
+        state.pose.position.x = float(state_vector[0])
+        state.pose.position.y = float(state_vector[1])
+        state.pose.position.z = float(state_vector[2])
+        
+        r = Rotation.from_euler('ZYX', [float(state_vector[8][0]), float(state_vector[7][0]), float(state_vector[6][0])])
+        quaternion = r.as_quat()
+        
+        state.pose.orientation.x = float(quaternion[0])
+        state.pose.orientation.y = float(quaternion[1])
+        state.pose.orientation.z = float(quaternion[2])
+        state.pose.orientation.w = float(quaternion[3])
+        state.velocity.linear.x = float(state_vector[3])
+        state.velocity.linear.y = float(state_vector[4])
+        state.velocity.linear.z = float(state_vector[5])
         return state
 
 
