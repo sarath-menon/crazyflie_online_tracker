@@ -232,17 +232,17 @@ class Controller():
 
     def callback_controller_state(self, data: CommandOuter):
 
-        self.get_logger().info(f"Controller state: {data.state}")
+        self.node.get_logger().info(f"Controller state: {data.state}")
 
         self.controller_state = data.state
         if self.controller_state == ControllerStates.normal:
-            self.get_logger().info('Controller state is changed to NORMAL.')
+            self.node.get_logger().info('Controller state is changed to NORMAL.')
         elif self.controller_state == ControllerStates.takeoff:
-            self.get_logger().info('Controller state is changed to TAKEOFF.')
+            self.node.get_logger().info('Controller state is changed to TAKEOFF.')
         elif self.controller_state == ControllerStates.landing:
-            self.get_logger().info('Controller state is changed to LANDING.')
+            self.node.get_logger().info('Controller state is changed to LANDING.')
         elif self.controller_state == ControllerStates.stop:
-            self.get_logger().info('Controller state is changed to STOP.')
+            self.node.get_logger().info('Controller state is changed to STOP.')
 
     def safe_shutdown(self):
         # place holder
