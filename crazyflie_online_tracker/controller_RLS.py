@@ -42,6 +42,8 @@ class RLSController(Controller):
     def __init__(self):
         super().__init__()
 
+
+        rclpy.init()
         self.node = rclpy.create_node("RLSController")
 
         self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
@@ -84,7 +86,7 @@ class RLSController(Controller):
 
 
          # declare params
-        Zznode.declare_parameter('publish_frequency', 20.0)
+        self.node.declare_parameter('publish_frequency', 20.0)
         self.node.declare_parameter('wait_for_simulator_initialization', False)
         self.node.declare_parameter('add_initial_target', False)
         self.node.declare_parameter('filename', "filename")
@@ -101,62 +103,69 @@ class RLSController(Controller):
         count = 5
         # rate = rclpy.Rate(f)
 
-        time.sleep(2)
-
         # Set to True to save data for post-processing
         save_log = True
 
         # Set to True to generate a plot immediately
         plot = True
 
-        while rclpy.ok() and self.controller_state != ControllerStates.stop:
-            ready = False
-            if add_initial_target and len(self.target_state_raw_log)==0:
-                initial_target = np.zeros((9, 1))
-                initial_target[:3] = self.desired_pos.reshape((3, 1))
-                self.target_state_raw_log.append(initial_target)
-            if len(self.drone_state_raw_log)>0 and \
-                len(self.target_state_raw_log)>0:
-                ready = True
-            if self.t <= T:
-                if ready:
-                    if self.controller_state == ControllerStates.normal:
-                        self.get_new_states()
-                        self.RLS_update()
-                    self.publish_setpoint()
-                    self.t += self.delta_t
-                    if wait_for_simulator_initialization:
-                        rclpy.sleep(4)
-                        count -= 1
-                        if count < 0:
-                            wait_for_simulator_initialization = False
-                else:
-                    rclpy.loginfo('No drone or target state estimation is available. Skipping.')
-            else:
-                if self.controller_state == ControllerStates.normal:
-                    self.publish_setpoint(is_last_command=True)
-                    rclpy.loginfo('Simulation finished.')
-                else:
-                    self.publish_setpoint()
+
+        
+        rclpy.spin(self.node)
+        # node.destroy_node()
+        # rclpy.shutdown()
+
+
+        time.sleep(2)
+
+        # while rclpy.ok() and self.controller_state != ControllerStates.stop:
+        #     ready = False
+        #     if add_initial_target and len(self.target_state_raw_log)==0:
+        #         initial_target = np.zeros((9, 1))
+        #         initial_target[:3] = self.desired_pos.reshape((3, 1))
+        #         self.target_state_raw_log.append(initial_target)
+        #     if len(self.drone_state_raw_log)>0 and \
+        #         len(self.target_state_raw_log)>0:
+        #         ready = True
+        #     if self.t <= T:
+        #         if ready:
+        #             if self.controller_state == ControllerStates.normal:
+        #                 self.get_new_states()
+        #                 self.RLS_update()
+        #             self.publish_setpoint()
+        #             self.t += self.delta_t
+        #             if wait_for_simulator_initialization:
+        #                 rclpy.sleep(4)
+        #                 count -= 1
+        #                 if count < 0:
+        #                     wait_for_simulator_initialization = False
+        #         else:
+        #             rclpy.loginfo('No drone or target state estimation is available. Skipping.')
+        #     else:
+        #         if self.controller_state == ControllerStates.normal:
+        #             self.publish_setpoint(is_last_command=True)
+        #             rclpy.loginfo('Simulation finished.')
+        #         else:
+        #             self.publish_setpoint()
             
-            rclpy.spin(node)
+        #     rclpy.spin(node)
 
-            # Destroy the node explicitly
-            # (optional - otherwise it will be done automatically
-            # when the garbage collector destroys the node object)
-            self.node.destroy_node()
-            rclpy.shutdown()
+        #     # Destroy the node explicitly
+        #     # (optional - otherwise it will be done automatically
+        #     # when the garbage collector destroys the node object)
+        #     self.node.destroy_node()
+        #     rclpy.shutdown()
 
-        if self.controller_state == ControllerStates.stop:
-            self.node.get_logger().info('controller state is set to STOP. Terminating.')
-            # if save_log:
-            #     filename = rclpy.get_param('filename')
-            #     additional_info = f"_{target}_T{T}_f{f}_gam{round(self.node.gamma,2)}_W{W}_mode{mode}"
-            #     new_filename = filename + additional_info
-            #     self.node.save_data(new_filename)
-            #     time.sleep(2)
-            #     if plot:
-            #        os.system("ros2 run crazyflie_online_tracker plot.py")
+        # if self.controller_state == ControllerStates.stop:
+        #     self.node.get_logger().info('controller state is set to STOP. Terminating.')
+        #     # if save_log:
+        #     #     filename = rclpy.get_param('filename')
+        #     #     additional_info = f"_{target}_T{T}_f{f}_gam{round(self.node.gamma,2)}_W{W}_mode{mode}"
+        #     #     new_filename = filename + additional_info
+        #     #     self.node.save_data(new_filename)
+        #     #     time.sleep(2)
+        #     #     if plot:
+        #     #        os.system("ros2 run crazyflie_online_tracker plot.py")
 
 
     def get_new_states(self):
@@ -357,7 +366,6 @@ class RLSController(Controller):
         rclpy.loginfo("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
 
 def main(args=None):
-    rclpy.init(args=args)
     controller = RLSController()
 
 
