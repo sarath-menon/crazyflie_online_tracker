@@ -116,7 +116,6 @@ class RLSController(Controller):
         # rclpy.shutdown()
 
     def timer_callback(self):
-        self.node.get_logger().info('selva')
 
         if rclpy.ok() and self.controller_state != ControllerStates.stop:
             ready = False
@@ -176,7 +175,7 @@ class RLSController(Controller):
         '''
         drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]
-        if self.get_parameter('synchronize_target').get_parameter_value().bool_value:
+        if self.node.get_parameter('synchronize_target').get_parameter_value().bool_value:
             # this block of code somehow helps to compensate for the differences of the ros node initialization times
             # e.g. for SOME horizon lengths, the target states used for estimation is [0.3,0.6,0.9,...], while for others it is [0.3,0.3,0.6,0.9,...]
             # this impacts the regret comparison of controllers with different W tracking the same target
