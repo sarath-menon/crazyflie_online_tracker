@@ -69,10 +69,11 @@ class DefaultController(Controller):
         self.controller_state = ControllerStates.normal
 
         # for timing in algorithms
-        self.Time = 0
+        self.Time = 0        # print(self.backend.time())
         self.Time_T = 0
+
         
-        rclpy.spin(self.node)
+        rclpy.spin(self.node)        # print(self.backend.time())
 
     def timer_callback(self):
 
@@ -113,7 +114,7 @@ class DefaultController(Controller):
                         self.publish_setpoint()
 
 
-        if self.controller_state == ControllerStates.stop:
+        else:
             self.node.get_logger().info('controller state is set to STOP. Terminating.')
 
             if self.save_log: # the simulation had started and has now been terminated
@@ -178,6 +179,13 @@ class DefaultController(Controller):
             setpoint.omega.y = float(action[2]) # roll rate
             setpoint.omega.z = float(action[3]) # yaw rate
             # self.node.get_logger().info('error:'+str(action))
+
+            # Rescale thrust from (0,0.56) to (0,60000)
+            motor_cmd_max = 60000
+            thrust_max = 0.56
+            
+            thrust_rescaled = thrust * (motor_cmd_max / 0.56)
+            setpoint.thrust = float(thrust_rescaled)
 
             disturbance_feedback = np.zeros((4,1))
             self.action_DF_log.append(disturbance_feedback)
