@@ -60,7 +60,7 @@ class DefaultController(Controller):
         self.timer = self.node.create_timer(timer_period, self.timer_callback)
 
         # Set to True to save data for post-processing
-        self.save_log = True
+        self.save_log = False
 
         # Set to True to generate a plot immediately
         self.plot = False
@@ -202,62 +202,6 @@ class DefaultController(Controller):
 def main(args=None):
 
     default_controller = DefaultController()
-
-
-    # Set to True to save data for post-processing
-    save_log = True
-
-    # Used for timing the algorithms
-    Time = 0
-    Time_T = 0
-
-    # # Set to True to generate a plot immediately
-    # plot = True
-
-    # while not (rospy.is_shutdown() or default_controller.controller_state == ControllerStates.stop):
-    #     ready = False
-    #     if len(default_controller.drone_state_raw_log) > 0 or len(default_controller.filtered_drone_state_raw_log)>0:
-    #         if len(default_controller.target_state_raw_log) > 0:
-    #             ready = True
-    #         if default_controller.t <= T:
-    #             if ready:
-    #                 t0 = time.time()
-    #                 default_controller.publish_setpoint()
-    #                 t1 = time.time()
-    #                 Time+= (t1-t0)
-    #                 Time_T+= 1
-    #                 # self.node.get_logger().info('default controller published the setpoint')
-    #                 default_controller.t += default_controller.delta_t
-    #                 if wait_for_simulator_initialization:
-    #                     rospy.sleep(4)
-    #                     count -= 1
-    #                     if count < 0:
-    #                         wait_for_simulator_initialization = False
-    #             else:
-    #                 self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
-    #         else:
-    #             if default_controller.controller_state == ControllerStates.normal:
-    #                 default_controller.publish_setpoint(is_last_command=True)
-    #                 self.node.get_logger().info('Simulation finished.')
-    #             else:
-    #                 default_controller.publish_setpoint()
-    #         rate.sleep()
-
-    # if default_controller.controller_state == ControllerStates.stop:
-    #     self.node.get_logger().info('controller state is set to STOP. Terminating.')
-    #     if save_log: # the simulation had started and has now been terminated
-    #         filename = rospy.get_param('filename')
-    #         additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
-    #         if filtering:
-    #             additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
-    #         new_filename = filename + additional_info
-    #         default_controller.save_data(new_filename) # save log data to file for evaluation
-    #         time.sleep(2)
-    #         if plot:
-    #             self.node.get_logger().info('Printing the figures')
-    #             self.node.get_logger().info('Time: ' + str(Time/Time_T))
-    #             os.system("rosrun crazyflie_online_tracker plot.py")
-
 
 if __name__ == '__main__':
     main()
