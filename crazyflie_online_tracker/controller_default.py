@@ -64,6 +64,13 @@ class DefaultController(Controller):
 
         # Set to True to generate a plot immediately
         self.plot = False
+
+        # INITIALIZATION OF CONTROLLER STATE
+        self.controller_state = ControllerStates.normal
+
+        # for timing in algorithms
+        self.Time = 0
+        self.Time_T = 0
         
         rclpy.spin(self.node)
 
@@ -71,16 +78,21 @@ class DefaultController(Controller):
 
         if self.controller_state != ControllerStates.stop:
             ready = False
+
+            self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
+            self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
+
             if len(self.drone_state_raw_log) > 0 or len(self.filtered_drone_state_raw_log)>0:
                 if len(self.target_state_raw_log) > 0:
                     ready = True
+                    
                 if self.t <= T:
                     if ready:
                         t0 = time.time()
                         self.publish_setpoint()
                         t1 = time.time()
-                        Time+= (t1-t0)
-                        Time_T+= 1
+                        self.Time+= (t1-t0)
+                        self.Time_T+= 1
                         self.node.get_logger().info('default controller published the setpoint')
 
 
@@ -114,7 +126,7 @@ class DefaultController(Controller):
                 time.sleep(2)
                 if self.plot:
                     self.node.get_logger().info('Printing the figures')
-                    self.node.get_logger().info('Time: ' + str(Time/Time_T))
+                    self.node.get_logger().info('Time: ' + str(self.Time/self.Time_T))
                     os.system("rosrun crazyflie_online_tracker plot.py")
 
     def compute_setpoint(self):
@@ -160,10 +172,11 @@ class DefaultController(Controller):
             action = action_rotated # option 2
             self.action_log.append(action)
             setpoint = CommandOuter()
-            setpoint.thrust = action[0]
-            setpoint.omega.x = action[1] # pitch rate
-            setpoint.omega.y = action[2] # roll rate
-            setpoint.omega.z = action[3] # yaw rate
+
+            setpoint.thrust = float(action[0])
+            setpoint.omega.x = float(action[1]) # pitch rate
+            setpoint.omega.y = float(action[2]) # roll rate
+            setpoint.omega.z = float(action[3]) # yaw rate
             # self.node.get_logger().info('error:'+str(action))
 
             disturbance_feedback = np.zeros((4,1))
