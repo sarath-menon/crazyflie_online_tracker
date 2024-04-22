@@ -493,7 +493,7 @@ class Controller():
                      disturbance_log=np.array(self.disturbances),
                      default_action_log=np.array(self.default_action_log),
                      optimal_action_log=np.array(self.optimal_action_log))
-        self.get_logger().info("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
+        self.node.get_logger().info("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
 
     def load_data(self, filename):
         try:

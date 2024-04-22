@@ -24,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'linear_simulator = crazyflie_online_tracker.linear_simulator:main',
+            'controller_default = crazyflie_online_tracker.controller_default:main',
             'controller_RLS = crazyflie_online_tracker.controller_RLS:main',
             'state_estimator_target_virtual = crazyflie_online_tracker.state_estimator_target_virtual:main',
         ],

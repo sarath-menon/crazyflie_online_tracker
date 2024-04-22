@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-import rospy
+import rclpy
+from rclpy.node import Node
+
 import numpy as np
 import time
 import yaml
 import os
+from scipy import linalg
 from crazyflie_online_tracker_interfaces.msg import CommandOuter
-from controller import Controller, ControllerStates
+from .controller import Controller, ControllerStates
+from datetime import datetime
+from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 
+import time
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
 
 with open(yaml_path, 'r') as file:
     data = yaml.safe_load(file)
 
-# Extract the required variables
+# Extract the required variableshover
 m = data['m']
 g = data['g']
 f = data['f']
@@ -30,21 +36,99 @@ class DefaultController(Controller):
     '''
     def __init__(self):
         super().__init__()
+
+        rclpy.init()
+        self.node = rclpy.create_node("DefaultController")
+
         self.m = m
-        rospy.init_node('default_controller')
+
+        self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
+        self.controller_command_pub = self.node.create_publisher(CommandOuter, 'controllerCommand', 10)
+        self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerStateKF', 10)
+
+        self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
+        self.target_state_sub = self.node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
+
+         # declare params
+        self.node.declare_parameter('filename', 'Filename')
+
+        # get params
+        self.filename = self.node.get_parameter('filename')
+
+         # timer calbacks
+        timer_period = 0.5  # seconds
+        self.timer = self.node.create_timer(timer_period, self.timer_callback)
+
+        # Set to True to save data for post-processing
+        self.save_log = True
+
+        # Set to True to generate a plot immediately
+        self.plot = False
+        
+        rclpy.spin(self.node)
+
+    def timer_callback(self):
+
+        if self.controller_state != ControllerStates.stop:
+            ready = False
+            if len(self.drone_state_raw_log) > 0 or len(self.filtered_drone_state_raw_log)>0:
+                if len(self.target_state_raw_log) > 0:
+                    ready = True
+                if self.t <= T:
+                    if ready:
+                        t0 = time.time()
+                        self.publish_setpoint()
+                        t1 = time.time()
+                        Time+= (t1-t0)
+                        Time_T+= 1
+                        self.node.get_logger().info('default controller published the setpoint')
+
+
+                        self.t += self.delta_t
+                        # if wait_for_simulator_initialization:
+                        #     rospy.sleep(4)
+                        #     count -= 1
+                        #     if count < 0:
+                        #         wait_for_simulator_initialization = False
+                    else:
+                        self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
+                else:
+                    if self.controller_state == ControllerStates.normal:
+                        self.publish_setpoint(is_last_command=True)
+                        self.node.get_logger().info('Simulation finished.')
+
+                    else:
+                        self.publish_setpoint()
+
+
+        if self.controller_state == ControllerStates.stop:
+            self.node.get_logger().info('controller state is set to STOP. Terminating.')
+
+            if self.save_log: # the simulation had started and has now been terminated
+
+                additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
+                if filtering:
+                    additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
+                new_filename = self.filename.value + additional_info
+                self.save_data(new_filename) # save log data to file for evaluation
+                time.sleep(2)
+                if self.plot:
+                    self.node.get_logger().info('Printing the figures')
+                    self.node.get_logger().info('Time: ' + str(Time/Time_T))
+                    os.system("rosrun crazyflie_online_tracker plot.py")
 
     def compute_setpoint(self):
         drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]
 
         if self.controller_state == ControllerStates.normal:
-            # rospy.loginfo("controller state: normal")
+            # self.node.get_logger().info("controller state: normal")
             self.drone_state_log.append(drone_state)
             self.target_state_log.append(target_state)
 
 
-            # rospy.loginfo("observe target[default]:" + str(target_state))
-            # rospy.loginfo("current state[default]: " + str(drone_state))
+            # self.node.get_logger().info("observe target[default]:" + str(target_state))
+            # self.node.get_logger().info("current state[default]: " + str(drone_state))
 
             # option 1: rotated error + smoothed setpoint: NOT USED
             if self.last_setpoint is None:
@@ -55,7 +139,7 @@ class DefaultController(Controller):
             error_limited[1] = drone_state[1] - desired_pos_limited[1]
             error_limited[2] = drone_state[2] - desired_pos_limited[2]
             self.last_setpoint = desired_pos_limited
-            # rospy.loginfo("setpoint limited:" + str(desired_pos_limited))
+            # self.node.get_logger().info("setpoint limited:" + str(desired_pos_limited))
             [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR_controller(self.K_star, error_limited, drone_state[8])
             action_rotated_limited = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
 
@@ -80,19 +164,19 @@ class DefaultController(Controller):
             setpoint.omega.x = action[1] # pitch rate
             setpoint.omega.y = action[2] # roll rate
             setpoint.omega.z = action[3] # yaw rate
-            # rospy.loginfo('error:'+str(action))
+            # self.node.get_logger().info('error:'+str(action))
 
             disturbance_feedback = np.zeros((4,1))
             self.action_DF_log.append(disturbance_feedback)
 
 
         elif self.controller_state == ControllerStates.takeoff:
-            rospy.loginfo("controller state: takeoff")
+            self.node.get_logger().info("controller state: takeoff")
             setpoint = self.takeoff(drone_state)
 
-            # rospy.loginfo('takeoff action:' + str(setpoint))
+            # self.node.get_logger().info('takeoff action:' + str(setpoint))
         elif self.controller_state == ControllerStates.landing:
-            rospy.loginfo("controller state: landing")
+            self.node.get_logger().info("controller state: landing")
             setpoint = self.landing(drone_state)
         self.setpoint = setpoint
 
@@ -115,13 +199,10 @@ class DefaultController(Controller):
         self.controller_command_pub.publish(self.setpoint)
 
 
-if __name__ == '__main__':
+def main(args=None):
 
     default_controller = DefaultController()
-    wait_for_simulator_initialization = rospy.get_param('wait_for_simulator_initialization')
-    count = 5
-    rate = rospy.Rate(f)
-    rospy.sleep(2)
+
 
     # Set to True to save data for post-processing
     save_log = True
@@ -130,54 +211,56 @@ if __name__ == '__main__':
     Time = 0
     Time_T = 0
 
-    # Set to True to generate a plot immediately
-    plot = True
+    # # Set to True to generate a plot immediately
+    # plot = True
 
-    while not (rospy.is_shutdown() or default_controller.controller_state == ControllerStates.stop):
-        ready = False
-        if len(default_controller.drone_state_raw_log) > 0 or len(default_controller.filtered_drone_state_raw_log)>0:
-            if len(default_controller.target_state_raw_log) > 0:
-                ready = True
-            if default_controller.t <= T:
-                if ready:
-                    t0 = time.time()
-                    default_controller.publish_setpoint()
-                    t1 = time.time()
-                    Time+= (t1-t0)
-                    Time_T+= 1
-                    # rospy.loginfo('default controller published the setpoint')
-                    default_controller.t += default_controller.delta_t
-                    if wait_for_simulator_initialization:
-                        rospy.sleep(4)
-                        count -= 1
-                        if count < 0:
-                            wait_for_simulator_initialization = False
-                else:
-                    rospy.loginfo('No drone or target state estimation is available. Skipping.')
-            else:
-                if default_controller.controller_state == ControllerStates.normal:
-                    default_controller.publish_setpoint(is_last_command=True)
-                    rospy.loginfo('Simulation finished.')
-                else:
-                    default_controller.publish_setpoint()
-            rate.sleep()
+    # while not (rospy.is_shutdown() or default_controller.controller_state == ControllerStates.stop):
+    #     ready = False
+    #     if len(default_controller.drone_state_raw_log) > 0 or len(default_controller.filtered_drone_state_raw_log)>0:
+    #         if len(default_controller.target_state_raw_log) > 0:
+    #             ready = True
+    #         if default_controller.t <= T:
+    #             if ready:
+    #                 t0 = time.time()
+    #                 default_controller.publish_setpoint()
+    #                 t1 = time.time()
+    #                 Time+= (t1-t0)
+    #                 Time_T+= 1
+    #                 # self.node.get_logger().info('default controller published the setpoint')
+    #                 default_controller.t += default_controller.delta_t
+    #                 if wait_for_simulator_initialization:
+    #                     rospy.sleep(4)
+    #                     count -= 1
+    #                     if count < 0:
+    #                         wait_for_simulator_initialization = False
+    #             else:
+    #                 self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
+    #         else:
+    #             if default_controller.controller_state == ControllerStates.normal:
+    #                 default_controller.publish_setpoint(is_last_command=True)
+    #                 self.node.get_logger().info('Simulation finished.')
+    #             else:
+    #                 default_controller.publish_setpoint()
+    #         rate.sleep()
 
-    if default_controller.controller_state == ControllerStates.stop:
-        rospy.loginfo('controller state is set to STOP. Terminating.')
-        if save_log: # the simulation had started and has now been terminated
-            filename = rospy.get_param('filename')
-            additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
-            if filtering:
-                additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
-            new_filename = filename + additional_info
-            default_controller.save_data(new_filename) # save log data to file for evaluation
-            time.sleep(2)
-            if plot:
-                rospy.loginfo('Printing the figures')
-                rospy.loginfo('Time: ' + str(Time/Time_T))
-                os.system("rosrun crazyflie_online_tracker plot.py")
-
-
+    # if default_controller.controller_state == ControllerStates.stop:
+    #     self.node.get_logger().info('controller state is set to STOP. Terminating.')
+    #     if save_log: # the simulation had started and has now been terminated
+    #         filename = rospy.get_param('filename')
+    #         additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
+    #         if filtering:
+    #             additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
+    #         new_filename = filename + additional_info
+    #         default_controller.save_data(new_filename) # save log data to file for evaluation
+    #         time.sleep(2)
+    #         if plot:
+    #             self.node.get_logger().info('Printing the figures')
+    #             self.node.get_logger().info('Time: ' + str(Time/Time_T))
+    #             os.system("rosrun crazyflie_online_tracker plot.py")
 
 
+if __name__ == '__main__':
+    main()
 
+
+    
