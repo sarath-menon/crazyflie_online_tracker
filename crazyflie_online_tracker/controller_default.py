@@ -11,6 +11,7 @@ from crazyflie_online_tracker_interfaces.msg import CommandOuter
 from .controller import Controller, ControllerStates
 from datetime import datetime
 from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
+from geometry_msgs.msg import Twist
 
 import time
 # Load data from the YAML file
@@ -49,6 +50,8 @@ class DefaultController(Controller):
         self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
         self.target_state_sub = self.node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
 
+        # self.setpoint_publisher = self.node.create_publisher(Twist, '/cf231/cmd_vel_legacy', 10)
+
          # declare params
         self.node.declare_parameter('filename', 'Filename')
 
@@ -56,8 +59,7 @@ class DefaultController(Controller):
         self.filename = self.node.get_parameter('filename')
 
          # timer calbacks
-        timer_period = 0.5  # seconds
-        self.timer = self.node.create_timer(timer_period, self.timer_callback)
+        self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
 
         # Set to True to save data for post-processing
         self.save_log = False
@@ -80,8 +82,8 @@ class DefaultController(Controller):
         if self.controller_state != ControllerStates.stop:
             ready = False
 
-            self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
-            self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
+            # self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
+            # self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
 
             if len(self.drone_state_raw_log) > 0 or len(self.filtered_drone_state_raw_log)>0:
                 if len(self.target_state_raw_log) > 0:
@@ -94,15 +96,10 @@ class DefaultController(Controller):
                         t1 = time.time()
                         self.Time+= (t1-t0)
                         self.Time_T+= 1
-                        self.node.get_logger().info('default controller published the setpoint')
-
+                        # self.node.get_logger().info("Time: " + str(self.t))
 
                         self.t += self.delta_t
-                        # if wait_for_simulator_initialization:
-                        #     rospy.sleep(4)
-                        #     count -= 1
-                        #     if count < 0:
-                        #         wait_for_simulator_initialization = False
+
                     else:
                         self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
                 else:
@@ -170,7 +167,7 @@ class DefaultController(Controller):
             action_naive[1] = pitch_rate
             action_naive[2] = roll_rate
 
-            action = action_rotated # option 2
+            action = action_rotated # option 2msg.omega.x
             self.action_log.append(action)
             setpoint = CommandOuter()
 
@@ -184,12 +181,11 @@ class DefaultController(Controller):
             motor_cmd_max = 60000
             thrust_max = 0.56
             
-            thrust_rescaled = thrust * (motor_cmd_max / 0.56)
+            thrust_rescaled = thrust * (motor_cmd_max / thrust_max)
             setpoint.thrust = float(thrust_rescaled)
 
             disturbance_feedback = np.zeros((4,1))
             self.action_DF_log.append(disturbance_feedback)
-
 
         elif self.controller_state == ControllerStates.takeoff:
             self.node.get_logger().info("controller state: takeoff")
