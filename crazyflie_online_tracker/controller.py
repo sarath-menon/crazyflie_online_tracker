@@ -10,6 +10,7 @@ from datetime import datetime
 from scipy import linalg
 from std_msgs.msg import Empty
 import yaml
+import queue
 
 from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 
@@ -38,7 +39,7 @@ class Controller():
     def __init__(self):
 
         super().__init__()
-        self.drone_state_raw_log = [] # restore all received drone state measurements.
+        self.drone_state_raw_log = queue.Queue(maxsize=20) # restore all received drone state measurements.
         self.target_state_raw_log = [] # restore all received target state measurements.
         self.drone_state_log = [] # restore drone states that are used for computing the setpoints(at 10Hz)
         self.target_state_log = [] # restore target states that are used for computing the setpoints(at 10Hz)
@@ -170,7 +171,7 @@ class Controller():
         drone_state[StateIndex.pitch] = euler[1]
         drone_state[StateIndex.yaw] = euler[0]
         # self.get_logger().info(f"state: {drone_state}")
-        self.drone_state_raw_log.append(drone_state)
+        self.drone_state_raw_log.put(drone_state)
 
     def callback_state_drone_filtered(self, data):
         filtered_drone_state = np.zeros((9, 1))
@@ -285,6 +286,8 @@ class Controller():
         # self.get_logger().info("error_body: "+str(error_body))
         u = -K_star@error_body.reshape([9, 1])
         thrust = u[0] + self.m*self.g
+        #thrust =  self.m*self.g
+
         roll_rate = u[1]
         pitch_rate = u[2]
         yaw_rate = u[3]
