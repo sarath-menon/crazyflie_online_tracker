@@ -69,23 +69,38 @@ class DefaultController(Controller):
 
         # INITIALIZATION OF CONTROLLER STATE
         self.controller_state = ControllerStates.normal
-
+            # self.node.get_logger().info(f"Length of drone state log: {self.drone_state_raw_log.qsize()}")
+            # self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
         # for timing in algorithms
         self.Time = 0        # print(self.backend.time())
         self.Time_T = 0
 
-        
         rclpy.spin(self.node)        # print(self.backend.time())
+
+    def thrust_newton_to_cmd(self, thrust):
+        motor_poly = [5.484560e-4, 1.032633e-6, 2.130295e-11]
+        motor_cmd_min = 1000
+        motor_cmd_max = 65000
+        
+        # copied from dfall_pkg/src/nodes/DefaultControllerService.cpp: float computeMotorPolyBackward(float thrust)
+        cmd_16bit = (-motor_poly[1] + np.sqrt(max(0,motor_poly[1]**2 - 4 * motor_poly[2] * (motor_poly[0] - thrust)))) / (2 * motor_poly[2])
+        if cmd_16bit < motor_cmd_min:
+            cmd_16bit = motor_cmd_min
+        elif cmd_16bit > motor_cmd_max:
+            cmd_16bit = motor_cmd_max
+        cmd_16bit = np.ushort(cmd_16bit)
+
+        return float(cmd_16bit)
 
     def timer_callback(self):
 
         if self.controller_state != ControllerStates.stop:
             ready = False
 
-            # self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
+            # self.node.get_logger().info(f"Length of drone state log: {self.drone_state_raw_log.qsize()}")
             # self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
 
-            if len(self.drone_state_raw_log) > 0 or len(self.filtered_drone_state_raw_log)>0:
+            if self.drone_state_raw_log.qsize() > 0 or len(self.filtered_drone_state_raw_log)>0:
                 if len(self.target_state_raw_log) > 0:
                     ready = True
                     
@@ -96,7 +111,7 @@ class DefaultController(Controller):
                         t1 = time.time()
                         self.Time+= (t1-t0)
                         self.Time_T+= 1
-                        # self.node.get_logger().info("Time: " + str(self.t))
+                        self.node.get_logger().info("Time: " + str(self.t))
 
                         self.t += self.delta_t
 
@@ -128,7 +143,7 @@ class DefaultController(Controller):
                     os.system("rosrun crazyflie_online_tracker plot.py")
 
     def compute_setpoint(self):
-        drone_state = self.drone_state_raw_log[-1]
+        drone_state = self.drone_state_raw_log.get()
         target_state = self.target_state_raw_log[-1]
 
         if self.controller_state == ControllerStates.normal:
@@ -171,18 +186,18 @@ class DefaultController(Controller):
             self.action_log.append(action)
             setpoint = CommandOuter()
 
+            # setpoint.header.stamp.sec = self.t
             setpoint.thrust = float(action[0])
             setpoint.omega.x = float(action[1]) # pitch rate
             setpoint.omega.y = float(action[2]) # roll rate
             setpoint.omega.z = float(action[3]) # yaw rate
             # self.node.get_logger().info('error:'+str(action))
 
-            # Rescale thrust from (0,0.56) to (0,60000)
-            motor_cmd_max = 60000
-            thrust_max = 0.56
-            
-            thrust_rescaled = thrust * (motor_cmd_max / thrust_max)
-            setpoint.thrust = float(thrust_rescaled)
+            # # Rescale thrust from (0,0.56) to (0,60000)
+            thrust_motor = setpoint.thrust/ 4
+            setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
+
+            self.node.get_logger().info(str(setpoint.thrust))
 
             disturbance_feedback = np.zeros((4,1))
             self.action_DF_log.append(disturbance_feedback)
@@ -213,6 +228,7 @@ class DefaultController(Controller):
             self.setpoint.is_last_command = True
         else:
             self.compute_setpoint()
+
         self.controller_command_pub.publish(self.setpoint)
 
 
