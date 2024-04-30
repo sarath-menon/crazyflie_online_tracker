@@ -62,10 +62,10 @@ class DefaultController(Controller):
         self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
 
         # Set to True to save data for post-processing
-        self.save_log = False
+        self.save_log = True
 
         # Set to True to generate a plot immediately
-        self.plot = False
+        self.plot = True
 
         # INITIALIZATION OF CONTROLLER STATE
         self.controller_state = ControllerStates.normal
@@ -122,6 +122,20 @@ class DefaultController(Controller):
                         self.publish_setpoint(is_last_command=True)
                         self.node.get_logger().info('Simulation finished.')
 
+                        if self.save_log: # the simulation had started and has now been terminated
+
+                            additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
+                            if filtering:
+                                additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
+                            new_filename = self.filename.value + additional_info
+                            self.save_data(new_filename) # save log data to file for evaluation
+                            time.sleep(2)
+                            if self.plot:
+                                self.node.get_logger().info('Printing the figures')
+                                self.node.get_logger().info('Time: ' + str(self.Time/self.Time_T))
+                                os.system("python3 ../crazyflie_online_tracker/plot.py")
+                            exit()
+
                     else:
                         self.publish_setpoint()
 
@@ -151,7 +165,6 @@ class DefaultController(Controller):
             self.drone_state_log.append(drone_state)
             self.target_state_log.append(target_state)
 
-
             # self.node.get_logger().info("observe target[default]:" + str(target_state))
             # self.node.get_logger().info("current state[default]: " + str(drone_state))
 
@@ -177,6 +190,7 @@ class DefaultController(Controller):
             error = drone_state - target_state
             action_naive = -self.K_star@error
             action_naive[0] = action_naive[0] + self.m*self.g
+            
             roll_rate = action_naive[1].copy()
             pitch_rate = action_naive[2].copy()
             action_naive[1] = pitch_rate
