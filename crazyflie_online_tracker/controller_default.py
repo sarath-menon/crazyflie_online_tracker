@@ -143,11 +143,11 @@ class DefaultController(Controller):
             self.setpoint = self.takeoff()
             self.controller_command_pub.publish(self.setpoint)
 
-        elif self.controller_state == ControllerStates.landing:
-            if self.controller_state == ControllerStates.idle:
+        elif self.controller_state == ControllerStates.idle:
                 self.node.get_logger().info("Drone landed")
                 exit()
 
+        elif self.controller_state == ControllerStates.landing: 
             if self.check_drone_at_position(pos=self.hover_position) == False:
                     self.go_to_position(self.hover_position)
                     self.node.get_logger().info("Going to hover position before landing")
@@ -157,19 +157,20 @@ class DefaultController(Controller):
                 # self.controller_command_pub.publish(self.setpoint)
                 self.land_autonomous()
                 self.node.get_logger().info("Landing started")
-                self.controller_state = ControllerStates.idle
+
             
         elif self.controller_state == ControllerStates.flight:
+            if self.t >= T:
+                self.node.get_logger().info('Simulation finished.')
+                self.land()
+                return
+
             if self.drone_ready == False:
                 if self.check_drone_at_position(pos=self.hover_position ) == False:
                     self.go_to_position(self.hover_position )
                     self.node.get_logger().info("Going to initial position")
                 else:
                     self.drone_ready = True
-
-            if self.t >= T:
-                self.node.get_logger().info('Simulation finished.')
-                self.land()
 
             else:
                 t0 = time.time()
@@ -294,10 +295,10 @@ class DefaultController(Controller):
         self.controller_state = ControllerStates.landing
 
     def land_autonomous(self):
-        self.controller_state = ControllerStates.landing
         self.setpoint = CommandOuter()
         self.setpoint.is_last_command = True
         self.controller_command_pub.publish(self.setpoint)
+        self.controller_state = ControllerStates.idle
 
 def main(args=None):
 
