@@ -78,13 +78,17 @@ class DefaultController(Controller):
 
         signal.signal(signal.SIGINT, self.exit_handler)
 
+        # takeoff drone
+        self.publish_setpoint(is_takeoff=True)
+        time.sleep(10)
+        self.node.get_logger().info("Takeoff over")
+
         rclpy.spin(self.node)        # print(self.backend.time())
 
         
     
     def exit_handler(self, signum, frame):
         print("Sending land command")
-        self.publish_setpoint(is_last_command=True)
         self.publish_setpoint(is_last_command=True)
         exit(1)
 
@@ -245,10 +249,13 @@ class DefaultController(Controller):
         disturbance = self.A @ last_target - curr_target
         self.disturbances.append(disturbance)
     
-    def publish_setpoint(self, is_last_command=False):
+    def publish_setpoint(self, is_last_command=False, is_takeoff=False):
         if is_last_command:
             self.setpoint = CommandOuter()
             self.setpoint.is_last_command = True
+        elif is_takeoff:
+            self.setpoint = CommandOuter()
+            self.setpoint.is_takeoff = True
         else:
             self.compute_setpoint()
 
