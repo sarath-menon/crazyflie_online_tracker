@@ -51,6 +51,22 @@ class TargetStateEstimator(StateEstimator):
         self.delta_t = float(1/f)
         self.target = target
 
+        # declare params
+        self.node.declare_parameter('wait_for_drone_ready', False)
+
+        # set wait_for_drone_ready to true
+        all_new_parameters = [rclpy.parameter.Parameter(
+            'wait_for_drone_ready',
+            rclpy.Parameter.Type.BOOL,
+            True
+        )]
+        self.node.set_parameters(all_new_parameters)
+
+        self.node.set_parameters([rclpy.parameter.Parameter('wait_for_drone_ready', rclpy.Parameter.Type.BOOL, True)])
+
+         # get params
+        self.wait_for_drone_ready = self.node.get_parameter('wait_for_drone_ready')
+
          # timer callbacks
         self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
 
@@ -163,13 +179,13 @@ class TargetStateEstimator(StateEstimator):
             self.count = 50 # don't start to move until the drone has taken off
 
         rclpy.spin(self.node)
-        self.node.destroy_node()
-        rclpy.shutdown()
 
 
     def timer_callback(self):
-        # self.node.get_logger().info(f"Publishing target")
-        self.publish_state()
+        if self.wait_for_drone_ready.value == True:
+            self.publish_state()
+        else:
+            self.node.get_logger().info("Waiting for drone ready")
 
     def publish_state(self):
         if target == 'stationary_target':
