@@ -12,6 +12,7 @@ from .controller import Controller, ControllerStates
 from datetime import datetime
 from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 from geometry_msgs.msg import Twist
+import signal
 
 import time
 # Load data from the YAML file
@@ -75,7 +76,17 @@ class DefaultController(Controller):
         self.Time = 0        # print(self.backend.time())
         self.Time_T = 0
 
+        signal.signal(signal.SIGINT, self.exit_handler)
+
         rclpy.spin(self.node)        # print(self.backend.time())
+
+        
+    
+    def exit_handler(self, signum, frame):
+        print("Sending land command")
+        self.publish_setpoint(is_last_command=True)
+        self.publish_setpoint(is_last_command=True)
+        exit(1)
 
     def thrust_newton_to_cmd(self, thrust):
         motor_poly = [5.484560e-4, 1.032633e-6, 2.130295e-11]
@@ -210,8 +221,6 @@ class DefaultController(Controller):
             # # Rescale thrust from (0,0.56) to (0,60000)
             thrust_motor = setpoint.thrust/ 4
             setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
-
-            self.node.get_logger().info(str(setpoint.thrust))
 
             disturbance_feedback = np.zeros((4,1))
             self.action_DF_log.append(disturbance_feedback)
