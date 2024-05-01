@@ -76,7 +76,8 @@ class DefaultController(Controller):
         signal.signal(signal.SIGINT, self.exit_handler)
 
         # takeoff drone
-        self.takeoff()
+        # self. takeoff_autonomous()
+        #self.takeoff_manual()
 
         rclpy.spin(self.node)        # print(self.backend.time())
 
@@ -87,28 +88,45 @@ class DefaultController(Controller):
         self.land()
         exit(1)
 
-    def thrust_newton_to_cmd(self, thrust):
-        motor_poly = [5.484560e-4, 1.032633e-6, 2.130295e-11]
-        motor_cmd_min = 1000
-        motor_cmd_max = 65000
-        
-        # copied from dfall_pkg/src/nodes/DefaultControllerService.cpp: float computeMotorPolyBackward(float thrust)
-        cmd_16bit = (-motor_poly[1] + np.sqrt(max(0,motor_poly[1]**2 - 4 * motor_poly[2] * (motor_poly[0] - thrust)))) / (2 * motor_poly[2])
-        if cmd_16bit < motor_cmd_min:
-            cmd_16bit = motor_cmd_min
-        elif cmd_16bit > motor_cmd_max:
-            cmd_16bit = motor_cmd_max
-        cmd_16bit = np.ushort(cmd_16bit)
+    def check_drone_ready(self):
+        drone_state = self.drone_state_raw_log[-1]
+        x, y, z, vx, vy, vz, yaw, yaw_rate, thrust = drone_state
 
-        return float(cmd_16bit)
+        tol = 0.3
+
+        x_diff = np.abs(x)[0]
+        y_diff = np.abs(y)[0]
+        z_diff = np.abs(z)[0]
+
+        self.node.get_logger().info(f"x: {x_diff}, y: {y_diff}, z: {z_diff}")
+
+        if x_diff < tol and y_diff < tol and z_diff < tol:
+            return True
+        else:
+            return False
 
     def timer_callback(self):
 
-        self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
-        self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}") 
+        # self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
+        # self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}") 
+
+        self.node.get_logger().info(f"Controller state: {self.controller_state}")
+
+        if len(self.drone_state_raw_log) == 0 or len(self.target_state_raw_log) == 0:
+            self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
+            return
+
+        
+        self.setpoint = self.takeoff()
+        self.controller_command_pub.publish(self.setpoint)
+        self.t += self.delta_t
+        return
     
-        if self.controller_state != ControllerStates.flight:
-            self.node.get_logger().info('Controller state is not flight')
+        # if self.check_drone_ready():
+        #     drone_state = self.drone_state_raw_log[-1]
+        #     self.setpoint = self.takeoff(drone_state, desired_pos=np.array([0, 0, 0]))
+        #     self.node.get_logger().info("Taking off")
+        #     return
 
         if self.t >= T:
             self.node.get_logger().info('Simulation finished.')
@@ -128,8 +146,6 @@ class DefaultController(Controller):
             self.land()
             exit()
 
-        if len(self.drone_state_raw_log) == 0 or len(self.target_state_raw_log) == 0:
-            self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
 
         else:
             t0 = time.time()
@@ -215,15 +231,19 @@ class DefaultController(Controller):
         self.compute_setpoint()
         self.controller_command_pub.publish(self.setpoint)
 
-    def takeoff(self):
+    def takeoff_autonomous(self):
         self.setpoint = CommandOuter()
         self.setpoint.is_takeoff = True
         self.controller_command_pub.publish(self.setpoint)
         self.controller_state = ControllerStates.takeoff
-        time.sleep(10)
+        time.sleep(2)
         
         self.node.get_logger().info("Switching from takeoff to flight state")
         self.controller_state = ControllerStates.flight
+
+    def takeoff_manual(self):
+        self.controller_state = ControllerStates.takeoff
+        self.tar
 
     def land(self):
         self.setpoint = CommandOuter()
