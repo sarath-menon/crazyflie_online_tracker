@@ -1,5 +1,5 @@
 # Parameters
-f: 100
+f: 50
 T: 50
 W_RLS: 5
 gamma_RLS: 0.8
