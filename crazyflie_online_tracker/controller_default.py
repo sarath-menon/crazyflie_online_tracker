@@ -76,8 +76,8 @@ class DefaultController(Controller):
         signal.signal(signal.SIGINT, self.exit_handler)
 
         # takeoff drone
-        # self. takeoff_autonomous()
-        #self.takeoff_manual()
+        self.takeoff_autonomous()
+        # self.takeoff_manual()
 
         rclpy.spin(self.node)        # print(self.backend.time())
 
@@ -116,20 +116,10 @@ class DefaultController(Controller):
             self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
             return
 
-        
-        self.setpoint = self.takeoff()
-        self.controller_command_pub.publish(self.setpoint)
-        self.t += self.delta_t
-        return
-    
-        # if self.check_drone_ready():
-        #     drone_state = self.drone_state_raw_log[-1]
-        #     self.setpoint = self.takeoff(drone_state, desired_pos=np.array([0, 0, 0]))
-        #     self.node.get_logger().info("Taking off")
-        #     return
-
         if self.t >= T:
             self.node.get_logger().info('Simulation finished.')
+            self.land()
+
             if self.save_log: # the simulation had started and has now been terminated
 
                 additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
@@ -140,22 +130,32 @@ class DefaultController(Controller):
                 time.sleep(2)
                 if self.plot:
                     self.node.get_logger().info('Printing the figures')
-                    self.node.get_logger().info('Time: ' + str(self.Time/self.Time_T))
                     os.system("python3 ../crazyflie_online_tracker/plot.py")
 
-            self.land()
             exit()
 
+        if self.controller_state == ControllerStates.takeoff:
+            # self.setpoint = self.takeoff()
+            # self.controller_command_pub.publish(self.setpoint)
+            pass
+    
+        # if self.check_drone_ready():
+        #     drone_state = self.drone_state_raw_log[-1]
+        #     self.setpoint = self.takeoff(drone_state, desired_pos=np.array([0, 0, 0]))
+        #     self.node.get_logger().info("Taking off")
+        #     return
 
-        else:
+
+        elif self.controller_state == ControllerStates.flight:
             t0 = time.time()
             self.publish_setpoint()
             t1 = time.time()
             self.Time+= (t1-t0)
             self.Time_T+= 1
-            self.node.get_logger().info("Time: " + str(self.t))
+            
 
-            self.t += self.delta_t
+        self.t += self.delta_t
+        self.node.get_logger().info("Time: " + str(self.t))
            
 
     def compute_setpoint(self):
@@ -243,7 +243,6 @@ class DefaultController(Controller):
 
     def takeoff_manual(self):
         self.controller_state = ControllerStates.takeoff
-        self.tar
 
     def land(self):
         self.setpoint = CommandOuter()
