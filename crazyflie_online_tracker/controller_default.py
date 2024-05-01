@@ -76,8 +76,8 @@ class DefaultController(Controller):
         signal.signal(signal.SIGINT, self.exit_handler)
 
         # takeoff drone
-        self.takeoff_autonomous()
-        # self.takeoff_manual()
+        #self.takeoff_autonomous()
+        self.takeoff_manual()
 
         rclpy.spin(self.node)        # print(self.backend.time())
 
@@ -135,9 +135,11 @@ class DefaultController(Controller):
             exit()
 
         if self.controller_state == ControllerStates.takeoff:
-            # self.setpoint = self.takeoff()
-            # self.controller_command_pub.publish(self.setpoint)
+            self.setpoint = self.takeoff()
+            self.controller_command_pub.publish(self.setpoint)
             pass
+
+
     
         # if self.check_drone_ready():
         #     drone_state = self.drone_state_raw_log[-1]
@@ -148,7 +150,7 @@ class DefaultController(Controller):
 
         elif self.controller_state == ControllerStates.flight:
             t0 = time.time()
-            self.publish_setpoint()
+            self.go_to_position(np.array([0, 0, 0.3]))
             t1 = time.time()
             self.Time+= (t1-t0)
             self.Time_T+= 1
@@ -156,22 +158,31 @@ class DefaultController(Controller):
 
         self.t += self.delta_t
         self.node.get_logger().info("Time: " + str(self.t))
+
+    def go_to_position(self, desired_pos):
+        self.compute_setpoint(desired_pos=desired_pos)
+        self.publish_setpoint()
            
 
-    def compute_setpoint(self):
+    def compute_setpoint(self, desired_pos=None):
+
         drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]
 
-
         self.drone_state_log.append(drone_state)
         self.target_state_log.append(target_state)
+        
 
         # self.node.get_logger().info("observe target[default]:" + str(target_state))
         # self.node.get_logger().info("current state[default]: " + str(drone_state))
 
+        if desired_pos is not None:
+            target_state[:3] = desired_pos.reshape(3,1)
+
         # option 1: rotated error + smoothed setpoint: NOT USED
         if self.last_setpoint is None:
             self.last_setpoint = drone_state[:3]
+
         desired_pos_limited = self.limit_pos_change(self.last_setpoint, target_state[:3])
         error_limited = drone_state - target_state
         error_limited[0] = drone_state[0] - desired_pos_limited[0]
@@ -223,6 +234,7 @@ class DefaultController(Controller):
         else:
             last_target = self.target_state_log[-2]  # r_t
             curr_target = self.target_state_log[-1]  # r_{t+1}
+
         # w_t = Ar_t - r_{t+1}
         disturbance = self.A @ last_target - curr_target
         self.disturbances.append(disturbance)
