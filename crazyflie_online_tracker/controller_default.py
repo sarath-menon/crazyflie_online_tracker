@@ -77,6 +77,11 @@ class DefaultController(Controller):
 
         # takeoff drone
         self.initial_position = np.array([0, 0, 0])
+        self.hover_position = np.array([0, 0, 0.3])
+
+        self.set_to_manual_mode()
+        time.sleep(4)
+
         #self.takeoff_autonomous()
         self.takeoff_manual()
 
@@ -94,14 +99,16 @@ class DefaultController(Controller):
         drone_state = self.drone_state_raw_log[-1]
         x, y, z, vx, vy, vz, yaw, yaw_rate, thrust = drone_state
 
-        tol = 0.3
+        tol_x = 0.1
+        tol_y = 0.1
+        tol_z = 0.1
 
-        position_diff = np.abs(np.array([x, y, z]) - pos)
+        position_diff = np.abs([x - pos[0], y - pos[1], z - pos[2]])
         x_diff, y_diff, z_diff = position_diff
 
-        # self.node.get_logger().info(f"x: {x_diff}, y: {y_diff}, z: {z_diff}")
+        self.node.get_logger().info(f"x: {x_diff}, y: {y_diff}, z: {z_diff}")
 
-        if np.all(position_diff < tol):
+        if np.all(position_diff < np.array([tol_x, tol_y, tol_z])):
             return True
         else:
             return False
@@ -117,38 +124,52 @@ class DefaultController(Controller):
             self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
             return
 
+            # if self.save_log: # the simulation had started and has now been terminated
 
-        if self.t >= T:
-            self.node.get_logger().info('Simulation finished.')
-            self.land()
+            #     additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
+            #     if filtering:
+            #         additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
+            #     new_filename = self.filename.value + additional_info
+            #     self.save_data(new_filename) # save log data to file for evaluation
+            #     time.sleep(2)
+            #     if self.plot:
+            #         self.node.get_logger().info('Printing the figures')
+            #         os.system("python3 ../crazyflie_online_tracker/plot.py")
 
-            if self.save_log: # the simulation had started and has now been terminated
-
-                additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
-                if filtering:
-                    additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
-                new_filename = self.filename.value + additional_info
-                self.save_data(new_filename) # save log data to file for evaluation
-                time.sleep(2)
-                if self.plot:
-                    self.node.get_logger().info('Printing the figures')
-                    os.system("python3 ../crazyflie_online_tracker/plot.py")
-
-            exit()
+            # exit()
 
 
         if self.controller_state == ControllerStates.takeoff:
             self.setpoint = self.takeoff()
             self.controller_command_pub.publish(self.setpoint)
 
+        elif self.controller_state == ControllerStates.landing:
+            if self.controller_state == ControllerStates.idle:
+                self.node.get_logger().info("Drone landed")
+                exit()
 
+            if self.check_drone_at_position(pos=self.hover_position) == False:
+                    self.go_to_position(self.hover_position)
+                    self.node.get_logger().info("Going to hover position before landing")
+
+            else:
+                # self.setpoint = self.landing()
+                # self.controller_command_pub.publish(self.setpoint)
+                self.land_autonomous()
+                self.node.get_logger().info("Landing started")
+                self.controller_state = ControllerStates.idle
+            
         elif self.controller_state == ControllerStates.flight:
             if self.drone_ready == False:
-                if self.check_drone_at_position(pos=self.initial_position) == False:
-                    self.go_to_position(self.initial_position)
+                if self.check_drone_at_position(pos=self.hover_position ) == False:
+                    self.go_to_position(self.hover_position )
                     self.node.get_logger().info("Going to initial position")
                 else:
                     self.drone_ready = True
+
+            if self.t >= T:
+                self.node.get_logger().info('Simulation finished.')
+                self.land()
 
             else:
                 t0 = time.time()
@@ -164,6 +185,17 @@ class DefaultController(Controller):
     def go_to_position(self, desired_pos):
         self.compute_setpoint(desired_pos=desired_pos)
         self.publish_setpoint()
+
+    def set_to_manual_mode(self):
+        # Publish empty setpoints to ensure the drone remains stationary
+        empty_setpoint = CommandOuter()
+        empty_setpoint.thrust = 10000.0
+        
+        # Publish the empty setpoint multiple times
+        for _ in range(10):
+            self.controller_command_pub.publish(empty_setpoint)
+        
+        self.node.get_logger().info("Published empty setpoint for manual mode")
            
 
     def compute_setpoint(self, desired_pos=None):
@@ -259,10 +291,13 @@ class DefaultController(Controller):
         self.controller_state = ControllerStates.takeoff
 
     def land(self):
+        self.controller_state = ControllerStates.landing
+
+    def land_autonomous(self):
+        self.controller_state = ControllerStates.landing
         self.setpoint = CommandOuter()
         self.setpoint.is_last_command = True
         self.controller_command_pub.publish(self.setpoint)
-        self.controller_state = ControllerStates.landing
 
 def main(args=None):
 

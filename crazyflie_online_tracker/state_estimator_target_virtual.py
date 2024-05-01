@@ -182,10 +182,11 @@ class TargetStateEstimator(StateEstimator):
 
 
     def timer_callback(self):
-        if self.wait_for_drone_ready.value == True:
-            self.publish_state()
-        else:
-            self.node.get_logger().info("Waiting for drone ready")
+        # if self.wait_for_drone_ready.value == True:
+        #     self.publish_state()
+        # else:
+        #     self.node.get_logger().info("Waiting for drone ready")
+        self.publish_state()
 
     def publish_state(self):
         if target == 'stationary_target':
