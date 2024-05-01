@@ -325,7 +325,7 @@ class Controller():
         return thrust, roll_rate, pitch_rate, yaw_rate
 
 
-    def takeoff(self, desired_pos=None):
+    def takeoff(self, desired_pos=np.array([0, 0, 0.3])):
         drone_state = self.drone_state_raw_log[-1]
         self.setpoint_takeoff = drone_state[:3]
 
@@ -337,6 +337,7 @@ class Controller():
 
         time_spin_motor = 0.8 # phase1: gradually increase thrust
         time_move_up = 2 # phase2: gradually move to 0.3m high and desired yaw angle(dfall_pkg use 0.4m)
+        
         time_goto_setpoint = 2 # phase3: fly to the desired (x, y, z) position
         min_spin_motor_cmd = 1000
         min_spin_motor_thrust_total = 4*thrust_cmd_to_newton(min_spin_motor_cmd)
@@ -391,7 +392,8 @@ class Controller():
                 desired_pos = self.setpoint_takeoff
             desired_pos_limited = self.limit_pos_change(self.setpoint_takeoff, desired_pos)
             self.node.get_logger().info("takeoff phase 3: goto setpoint")
-            # self.node.get_logger().info('desired pos: '+str(desired_pos))
+
+            
             # self.node.get_logger().info('desired pos limited: '+str(desired_pos_limited))
             
             error_inertial = drone_state.copy()
@@ -407,12 +409,21 @@ class Controller():
             command.omega.y = float(roll_rate)
             command.omega.z = float(yaw_rate)
 
-            if time_takeoff > time_spin_motor + time_move_up + time_goto_setpoint or \
-                (np.abs(drone_state[0] - desired_pos[0]) < 0.2 and \
-                 np.abs(drone_state[1] - desired_pos[1]) < 0.2 and \
-                 np.abs(drone_state[2] - desired_pos[2]) < 0.1):
-                self.controller_state = ControllerStates.flight
+            time_condition = time_takeoff > time_spin_motor + time_move_up + time_goto_setpoint
+            position_tolerance = [0.1, 0.1, 0.05]
+            
+            position_differences_values = [np.abs(drone_state[i] - desired_pos[i]) for i in range(3)]
 
+
+            position_differences = [position_differences_values[i] < position_tolerance[i] for i in range(3)]
+
+
+            position_condition = all(position_differences)
+
+            self.node.get_logger().info(f"Position differences values: {position_differences_values}")
+
+            if time_condition or position_condition:
+                self.controller_state = ControllerStates.flight
                 self.last_setpoint = self.setpoint_takeoff
 
         command.thrust = self.thrust_newton_to_cmd(command.thrust)
@@ -436,9 +447,15 @@ class Controller():
 
 
 
-    def landing(self, drone_state):
-        time_landing_max = 2
-        landing_end_height = 0.15
+    def landing(self, desired_pos=np.array([0, 0, 0.15])):
+        drone_state = self.drone_state_raw_log[-1]
+
+        time_landing_max = 4
+        landing_end_height = desired_pos[2]
+        landing_spin_motor_cmd = 10000
+
+        command = CommandOuter()
+
         if self.t_landing_start is None:
             self.t_landing_start = self.t
             time_landing = 0
@@ -447,16 +464,18 @@ class Controller():
         if self.setpoint_landing is None:
             self.setpoint_landing = drone_state[:3]
         if drone_state[2] < landing_end_height or time_landing>time_landing_max:
-            landing_spin_motor_cmd = 10000
-            command = CommandOuter()
-            command.thrust = 4*thrust_cmd_to_newton(landing_spin_motor_cmd)
-            command.omega.x = 0
-            command.omega.y = 0
-            command.omega.z = 0
+            
+            
+            command.thrust = float(4 * thrust_cmd_to_newton(landing_spin_motor_cmd))
+            command.omega.x = float(0)
+            command.omega.y = float(0)
+            command.omega.z = float(0)
             self.controller_state = ControllerStates.idle
+
         else:
-            desired_pos = self.setpoint_landing.copy()
-            desired_pos[2] = landing_end_height
+            if desired_pos is None:
+                desired_pos = self.setpoint_landing.copy()
+
             desired_pos_limited = self.limit_pos_change(self.setpoint_landing, desired_pos)
             # self.node.get_logger().info('limited pos: '+str(desired_pos_limited))
             # self.node.get_logger().info('drone state: '+str(drone_state))
@@ -468,11 +487,11 @@ class Controller():
             [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star_takeoff, error_inertial, drone_state[8])
             # self.node.get_logger().info('action: '+str([thrust, roll_rate, pitch_rate, yaw_rate]))
             # assign desired values to command as defined in the dfall decoder at the onborad firmware
-            command = CommandOuter()
-            command.thrust = thrust
-            command.omega.x = pitch_rate
-            command.omega.y = roll_rate
-            command.omega.z = yaw_rate
+
+            command.thrust = float(thrust)
+            command.omega.x = float(pitch_rate)
+            command.omega.y = float(roll_rate)
+            command.omega.z = float(yaw_rate)
         return command
 
     def limit_pos_change(self, curr_pos, desired_pos):
