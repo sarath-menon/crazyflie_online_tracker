@@ -79,7 +79,7 @@ class DefaultController(Controller):
         signal.signal(signal.SIGINT, self.exit_handler)
 
         # takeoff drone
-        self.publish_setpoint(is_takeoff=True)
+        self.takeoff()
         time.sleep(10)
         self.node.get_logger().info("Takeoff over")
 
@@ -89,7 +89,7 @@ class DefaultController(Controller):
     
     def exit_handler(self, signum, frame):
         print("Sending land command")
-        self.publish_setpoint(is_last_command=True)
+        self.land()
         exit(1)
 
     def thrust_newton_to_cmd(self, thrust):
@@ -134,7 +134,7 @@ class DefaultController(Controller):
                         self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
                 else:
                     if self.controller_state == ControllerStates.normal:
-                        self.publish_setpoint(is_last_command=True)
+                        self.l
                         self.node.get_logger().info('Simulation finished.')
 
                         if self.save_log: # the simulation had started and has now been terminated
@@ -249,18 +249,19 @@ class DefaultController(Controller):
         disturbance = self.A @ last_target - curr_target
         self.disturbances.append(disturbance)
     
-    def publish_setpoint(self, is_last_command=False, is_takeoff=False):
-        if is_last_command:
-            self.setpoint = CommandOuter()
-            self.setpoint.is_last_command = True
-        elif is_takeoff:
-            self.setpoint = CommandOuter()
-            self.setpoint.is_takeoff = True
-        else:
-            self.compute_setpoint()
-
+    def publish_setpoint(self):
+        self.compute_setpoint()
         self.controller_command_pub.publish(self.setpoint)
 
+    def takeoff(self):
+        self.setpoint = CommandOuter()
+        self.setpoint.is_takeoff = True
+        self.controller_command_pub.publish(self.setpoint)
+
+    def land(self):
+        self.setpoint = CommandOuter()
+        self.setpoint.is_last_command = True
+        self.controller_command_pub.publish(self.setpoint)
 
 def main(args=None):
 
