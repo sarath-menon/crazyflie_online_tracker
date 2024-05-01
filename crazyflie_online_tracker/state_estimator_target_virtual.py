@@ -47,8 +47,8 @@ class TargetStateEstimator(StateEstimator):
         # publishers and subscribers
         self.state_pub = self.node.create_publisher(TargetState, 'targetState', 10)
         self.service = self.node.create_service(PublishSingleTarget, '/publish_single_target', self.handle_publish_single_target)
-        self.delta_t = 0.1 # model discretion timestep
-        # self.delta_t = float(1/f)
+        # self.delta_t = 0.1 # model discretion timestep
+        self.delta_t = float(1/f)
         self.target = target
 
          # timer callbacks
@@ -102,7 +102,7 @@ class TargetStateEstimator(StateEstimator):
         self.S_circular = self.S_const_vel.copy()
         if is_sim:
             self.radius = 0.5
-            self.velocity = 0.1
+            self.velocity = 0.05
             self.initial_state_circular = np.array([0.0, 0.0, self.velocity, 0]).reshape([4, 1])
         else:
             self.radius = 0.3
