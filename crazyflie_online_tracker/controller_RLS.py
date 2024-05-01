@@ -113,7 +113,7 @@ class RLSController(Controller):
         if self.controller_state != ControllerStates.stop:
             ready = False
 
-            self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
+            self.node.get_logger().info(f"Length of drone state log: {self.drone_state_raw_log.qsize()}")
             self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
 
             # Check if initial target is to be added and if the target state log is empty
@@ -123,7 +123,7 @@ class RLSController(Controller):
                 self.target_state_raw_log.append(initial_target)
 
             # Check if both drone state log and target state log are not empty
-            if len(self.drone_state_raw_log)>0 and \
+            if self.drone_state_raw_log.qsize()>0 and \
                 len(self.target_state_raw_log)>0:
                 ready = True
                 
@@ -164,7 +164,7 @@ class RLSController(Controller):
         '''
         Read the latest target and drone state measurements and compute the disutbance accordingly.
         '''
-        drone_state = self.drone_state_raw_log[-1]
+        drone_state = self.drone_state_raw_log.get()
         target_state = self.target_state_raw_log[-1]
         if self.node.get_parameter('synchronize_target').get_parameter_value().bool_value:
             # this block of code somehow helps to compensate for the differences of the ros node initialization times
@@ -325,7 +325,7 @@ class RLSController(Controller):
             self.compute_setpoint()
 
         
-        # self.node.get_logger().info("Publishing setpoint")
+        self.node.get_logger().info("Publishing setpoint")
         self.controller_command_pub.publish(self.setpoint)
 
     def save_data(self, filename):
