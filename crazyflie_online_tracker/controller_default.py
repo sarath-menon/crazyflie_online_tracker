@@ -76,31 +76,32 @@ class DefaultController(Controller):
         signal.signal(signal.SIGINT, self.exit_handler)
 
         # takeoff drone
+        self.initial_position = np.array([0, 0, 0])
         #self.takeoff_autonomous()
         self.takeoff_manual()
 
+        self.drone_ready = False
+
         rclpy.spin(self.node)        # print(self.backend.time())
 
-        
     
     def exit_handler(self, signum, frame):
         print("Sending land command")
         self.land()
         exit(1)
 
-    def check_drone_ready(self):
+    def check_drone_at_position(self, pos=np.array([0, 0, 0])):
         drone_state = self.drone_state_raw_log[-1]
         x, y, z, vx, vy, vz, yaw, yaw_rate, thrust = drone_state
 
         tol = 0.3
 
-        x_diff = np.abs(x)[0]
-        y_diff = np.abs(y)[0]
-        z_diff = np.abs(z)[0]
+        position_diff = np.abs(np.array([x, y, z]) - pos)
+        x_diff, y_diff, z_diff = position_diff
 
-        self.node.get_logger().info(f"x: {x_diff}, y: {y_diff}, z: {z_diff}")
+        # self.node.get_logger().info(f"x: {x_diff}, y: {y_diff}, z: {z_diff}")
 
-        if x_diff < tol and y_diff < tol and z_diff < tol:
+        if np.all(position_diff < tol):
             return True
         else:
             return False
@@ -115,6 +116,7 @@ class DefaultController(Controller):
         if len(self.drone_state_raw_log) == 0 or len(self.target_state_raw_log) == 0:
             self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
             return
+
 
         if self.t >= T:
             self.node.get_logger().info('Simulation finished.')
@@ -134,26 +136,26 @@ class DefaultController(Controller):
 
             exit()
 
+
         if self.controller_state == ControllerStates.takeoff:
             self.setpoint = self.takeoff()
             self.controller_command_pub.publish(self.setpoint)
-            pass
-
-
-    
-        # if self.check_drone_ready():
-        #     drone_state = self.drone_state_raw_log[-1]
-        #     self.setpoint = self.takeoff(drone_state, desired_pos=np.array([0, 0, 0]))
-        #     self.node.get_logger().info("Taking off")
-        #     return
 
 
         elif self.controller_state == ControllerStates.flight:
-            t0 = time.time()
-            self.go_to_position(np.array([0, 0, 0.3]))
-            t1 = time.time()
-            self.Time+= (t1-t0)
-            self.Time_T+= 1
+            if self.drone_ready == False:
+                if self.check_drone_at_position(pos=self.initial_position) == False:
+                    self.go_to_position(self.initial_position)
+                    self.node.get_logger().info("Going to initial position")
+                else:
+                    self.drone_ready = True
+
+            else:
+                t0 = time.time()
+                self.publish_setpoint()
+                t1 = time.time()
+                self.Time+= (t1-t0)
+                self.Time_T+= 1
             
 
         self.t += self.delta_t
