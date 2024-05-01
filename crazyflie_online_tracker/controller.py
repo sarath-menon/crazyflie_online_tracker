@@ -39,7 +39,7 @@ class Controller():
     def __init__(self):
 
         super().__init__()
-        self.drone_state_raw_log = queue.Queue(maxsize=20) # restore all received drone state measurements.
+        self.drone_state_raw_log = [] # restore all received drone state measurements.
         self.target_state_raw_log = [] # restore all received target state measurements.
         self.drone_state_log = [] # restore drone states that are used for computing the setpoints(at 10Hz)
         self.target_state_log = [] # restore target states that are used for computing the setpoints(at 10Hz)
@@ -62,7 +62,7 @@ class Controller():
         self.node = None
 
         # INITIALIZATION OF CONTROLLER STATE
-        self.controller_state = ControllerStates.stop
+        self.controller_state = ControllerStates.idle
 
         self.controller_state_sub = None
         self.controller_command_pub = None
@@ -171,7 +171,7 @@ class Controller():
         drone_state[StateIndex.pitch] = euler[1]
         drone_state[StateIndex.yaw] = euler[0]
         # self.get_logger().info(f"state: {drone_state}")
-        self.drone_state_raw_log.put(drone_state)
+        self.drone_state_raw_log.append(drone_state)
 
     def callback_state_drone_filtered(self, data):
         filtered_drone_state = np.zeros((9, 1))
@@ -239,14 +239,13 @@ class Controller():
 
     def callback_controller_state(self, data: CommandOuter):
         self.controller_state = data.state
-        if self.controller_state == ControllerStates.normal:
-            self.node.get_logger().info('Controller state is changed to NORMAL.')
+        if self.controller_state == ControllerStates.flight:
+            self.node.get_logger().info('Controller state is changed to Flight.')
         elif self.controller_state == ControllerStates.takeoff:
             self.node.get_logger().info('Controller state is changed to TAKEOFF.')
         elif self.controller_state == ControllerStates.landing:
             self.node.get_logger().info('Controller state is changed to LANDING.')
-        elif self.controller_state == ControllerStates.stop:
-            self.node.get_logger().info('Controller state is changed to STOP.')
+
 
     def safe_shutdown(self):
         # place holder
@@ -420,7 +419,7 @@ class Controller():
             command.omega.x = 0
             command.omega.y = 0
             command.omega.z = 0
-            self.controller_state = ControllerStates.stop
+            self.controller_state = ControllerStates.idle
         else:
             desired_pos = self.setpoint_landing.copy()
             desired_pos[2] = landing_end_height
@@ -540,7 +539,7 @@ class MotionIndex():
     left = 4
 
 class ControllerStates():
-    normal = 0
+    flight = 0
     takeoff = 1
     landing = 2
-    stop = 3
+    idle = 3

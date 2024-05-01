@@ -68,10 +68,7 @@ class DefaultController(Controller):
         # Set to True to generate a plot immediately
         self.plot = True
 
-        # INITIALIZATION OF CONTROLLER STATE
-        self.controller_state = ControllerStates.normal
-            # self.node.get_logger().info(f"Length of drone state log: {self.drone_state_raw_log.qsize()}")
-            # self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
+
         # for timing in algorithms
         self.Time = 0        # print(self.backend.time())
         self.Time_T = 0
@@ -80,8 +77,6 @@ class DefaultController(Controller):
 
         # takeoff drone
         self.takeoff()
-        time.sleep(10)
-        self.node.get_logger().info("Takeoff over")
 
         rclpy.spin(self.node)        # print(self.backend.time())
 
@@ -109,55 +104,14 @@ class DefaultController(Controller):
 
     def timer_callback(self):
 
-        if self.controller_state != ControllerStates.stop:
-            ready = False
+        self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
+        self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}") 
+    
+        if self.controller_state != ControllerStates.flight:
+            self.node.get_logger().info('Controller state is not flight')
 
-            # self.node.get_logger().info(f"Length of drone state log: {self.drone_state_raw_log.qsize()}")
-            # self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
-
-            if self.drone_state_raw_log.qsize() > 0 or len(self.filtered_drone_state_raw_log)>0:
-                if len(self.target_state_raw_log) > 0:
-                    ready = True
-                    
-                if self.t <= T:
-                    if ready:
-                        t0 = time.time()
-                        self.publish_setpoint()
-                        t1 = time.time()
-                        self.Time+= (t1-t0)
-                        self.Time_T+= 1
-                        self.node.get_logger().info("Time: " + str(self.t))
-
-                        self.t += self.delta_t
-
-                    else:
-                        self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
-                else:
-                    if self.controller_state == ControllerStates.normal:
-                        self.l
-                        self.node.get_logger().info('Simulation finished.')
-
-                        if self.save_log: # the simulation had started and has now been terminated
-
-                            additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
-                            if filtering:
-                                additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
-                            new_filename = self.filename.value + additional_info
-                            self.save_data(new_filename) # save log data to file for evaluation
-                            time.sleep(2)
-                            if self.plot:
-                                self.node.get_logger().info('Printing the figures')
-                                self.node.get_logger().info('Time: ' + str(self.Time/self.Time_T))
-                                os.system("python3 ../crazyflie_online_tracker/plot.py")
-                            exit()
-
-                    else:
-                        self.publish_setpoint()
-
-
-        else:
-            self.node.get_logger().info('controller state is set to STOP. Terminating.')
-
+        if self.t >= T:
+            self.node.get_logger().info('Simulation finished.')
             if self.save_log: # the simulation had started and has now been terminated
 
                 additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
@@ -169,74 +123,82 @@ class DefaultController(Controller):
                 if self.plot:
                     self.node.get_logger().info('Printing the figures')
                     self.node.get_logger().info('Time: ' + str(self.Time/self.Time_T))
-                    os.system("rosrun crazyflie_online_tracker plot.py")
+                    os.system("python3 ../crazyflie_online_tracker/plot.py")
+
+            self.land()
+            exit()
+
+        if len(self.drone_state_raw_log) == 0 or len(self.target_state_raw_log) == 0:
+            self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
+
+        else:
+            t0 = time.time()
+            self.publish_setpoint()
+            t1 = time.time()
+            self.Time+= (t1-t0)
+            self.Time_T+= 1
+            self.node.get_logger().info("Time: " + str(self.t))
+
+            self.t += self.delta_t
+           
 
     def compute_setpoint(self):
-        drone_state = self.drone_state_raw_log.get()
+        drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]
 
-        if self.controller_state == ControllerStates.normal:
-            # self.node.get_logger().info("controller state: normal")
-            self.drone_state_log.append(drone_state)
-            self.target_state_log.append(target_state)
 
-            # self.node.get_logger().info("observe target[default]:" + str(target_state))
-            # self.node.get_logger().info("current state[default]: " + str(drone_state))
+        self.drone_state_log.append(drone_state)
+        self.target_state_log.append(target_state)
 
-            # option 1: rotated error + smoothed setpoint: NOT USED
-            if self.last_setpoint is None:
-                self.last_setpoint = drone_state[:3]
-            desired_pos_limited = self.limit_pos_change(self.last_setpoint, target_state[:3])
-            error_limited = drone_state - target_state
-            error_limited[0] = drone_state[0] - desired_pos_limited[0]
-            error_limited[1] = drone_state[1] - desired_pos_limited[1]
-            error_limited[2] = drone_state[2] - desired_pos_limited[2]
-            self.last_setpoint = desired_pos_limited
-            # self.node.get_logger().info("setpoint limited:" + str(desired_pos_limited))
-            [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR_controller(self.K_star, error_limited, drone_state[8])
-            action_rotated_limited = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
+        # self.node.get_logger().info("observe target[default]:" + str(target_state))
+        # self.node.get_logger().info("current state[default]: " + str(drone_state))
 
-            # option 2: rotated error: USED
-            error = drone_state - target_state
-            [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star, error, drone_state[8])
-            action_rotated = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
+        # option 1: rotated error + smoothed setpoint: NOT USED
+        if self.last_setpoint is None:
+            self.last_setpoint = drone_state[:3]
+        desired_pos_limited = self.limit_pos_change(self.last_setpoint, target_state[:3])
+        error_limited = drone_state - target_state
+        error_limited[0] = drone_state[0] - desired_pos_limited[0]
+        error_limited[1] = drone_state[1] - desired_pos_limited[1]
+        error_limited[2] = drone_state[2] - desired_pos_limited[2]
+        self.last_setpoint = desired_pos_limited
+        # self.node.get_logger().info("setpoint limited:" + str(desired_pos_limited))
+        [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR_controller(self.K_star, error_limited, drone_state[8])
+        action_rotated_limited = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
 
-            # option 3: naive LQR: NOT USED
-            error = drone_state - target_state
-            action_naive = -self.K_star@error
-            action_naive[0] = action_naive[0] + self.m*self.g
-            
-            roll_rate = action_naive[1].copy()
-            pitch_rate = action_naive[2].copy()
-            action_naive[1] = pitch_rate
-            action_naive[2] = roll_rate
+        # option 2: rotated error: USED
+        error = drone_state - target_state
+        [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star, error, drone_state[8])
+        action_rotated = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
 
-            action = action_rotated # option 2msg.omega.x
-            self.action_log.append(action)
-            setpoint = CommandOuter()
+        # option 3: naive LQR: NOT USED
+        error = drone_state - target_state
+        action_naive = -self.K_star@error
+        action_naive[0] = action_naive[0] + self.m*self.g
+        
+        roll_rate = action_naive[1].copy()
+        pitch_rate = action_naive[2].copy()
+        action_naive[1] = pitch_rate
+        action_naive[2] = roll_rate
 
-            # setpoint.header.stamp.sec = self.t
-            setpoint.thrust = float(action[0])
-            setpoint.omega.x = float(action[1]) # pitch rate
-            setpoint.omega.y = float(action[2]) # roll rate
-            setpoint.omega.z = float(action[3]) # yaw rate
-            # self.node.get_logger().info('error:'+str(action))
+        action = action_rotated # option 2msg.omega.x
+        self.action_log.append(action)
+        setpoint = CommandOuter()
 
-            # # Rescale thrust from (0,0.56) to (0,60000)
-            thrust_motor = setpoint.thrust/ 4
-            setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
+        # setpoint.header.stamp.sec = self.t
+        setpoint.thrust = float(action[0])
+        setpoint.omega.x = float(action[1]) # pitch rate
+        setpoint.omega.y = float(action[2]) # roll rate
+        setpoint.omega.z = float(action[3]) # yaw rate
+        # self.node.get_logger().info('error:'+str(action))
 
-            disturbance_feedback = np.zeros((4,1))
-            self.action_DF_log.append(disturbance_feedback)
+        # # Rescale thrust from (0,0.56) to (0,60000)
+        thrust_motor = setpoint.thrust/ 4
+        setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
 
-        elif self.controller_state == ControllerStates.takeoff:
-            self.node.get_logger().info("controller state: takeoff")
-            setpoint = self.takeoff(drone_state)
+        disturbance_feedback = np.zeros((4,1))
+        self.action_DF_log.append(disturbance_feedback)
 
-            # self.node.get_logger().info('takeoff action:' + str(setpoint))
-        elif self.controller_state == ControllerStates.landing:
-            self.node.get_logger().info("controller state: landing")
-            setpoint = self.landing(drone_state)
         self.setpoint = setpoint
 
         # compute disturbance w_t according to the latest drone and target state estimation
@@ -257,11 +219,17 @@ class DefaultController(Controller):
         self.setpoint = CommandOuter()
         self.setpoint.is_takeoff = True
         self.controller_command_pub.publish(self.setpoint)
+        self.controller_state = ControllerStates.takeoff
+        time.sleep(10)
+        
+        self.node.get_logger().info("Switching from takeoff to flight state")
+        self.controller_state = ControllerStates.flight
 
     def land(self):
         self.setpoint = CommandOuter()
         self.setpoint.is_last_command = True
         self.controller_command_pub.publish(self.setpoint)
+        self.controller_state = ControllerStates.landing
 
 def main(args=None):
 
