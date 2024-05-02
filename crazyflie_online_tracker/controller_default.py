@@ -138,28 +138,8 @@ class DefaultController(Controller):
 
             # exit()
 
-
-        if self.controller_state == ControllerStates.takeoff:
-            self.setpoint = self.takeoff()
-            self.controller_command_pub.publish(self.setpoint)
-
-        elif self.controller_state == ControllerStates.idle:
-                self.node.get_logger().info("Drone landed")
-                exit()
-
-        elif self.controller_state == ControllerStates.landing: 
-            if self.check_drone_at_position(pos=self.hover_position) == False:
-                    self.go_to_position(self.hover_position)
-                    self.node.get_logger().info("Going to hover position before landing")
-
-            else:
-                # self.setpoint = self.landing()
-                # self.controller_command_pub.publish(self.setpoint)
-                self.land_autonomous()
-                self.node.get_logger().info("Landing started")
-
             
-        elif self.controller_state == ControllerStates.flight:
+        if self.controller_state == ControllerStates.flight:
             if self.t >= T:
                 self.node.get_logger().info('Simulation finished.')
                 self.land()
@@ -178,6 +158,26 @@ class DefaultController(Controller):
                 t1 = time.time()
                 self.Time+= (t1-t0)
                 self.Time_T+= 1
+
+        elif self.controller_state == ControllerStates.takeoff:
+            self.setpoint = self.takeoff()
+            self.controller_command_pub.publish(self.setpoint)
+
+        elif self.controller_state == ControllerStates.idle:
+                self.node.get_logger().info("Drone landed")
+                exit()
+
+        elif self.controller_state == ControllerStates.landing: 
+            if self.check_drone_at_position(pos=self.hover_position) == False:
+                    self.go_to_position(self.hover_position)
+                    self.node.get_logger().info("Going to hover position before landing")
+
+            else:
+                # self.setpoint = self.landing()
+                # self.controller_command_pub.publish(self.setpoint)
+                self.land_autonomous()
+                self.node.get_logger().info("Landing started")
+
             
 
         self.t += self.delta_t
