@@ -19,10 +19,8 @@ def generate_launch_description():
             executable='controller_default',
             name='controller_default',
             parameters=[{
-                'publish_frequency': LaunchConfiguration('publish_frequency'),
-                'add_initial_target': LaunchConfiguration('add_initial_target'),
-                'synchronize_target': LaunchConfiguration('synchronize_target'),
-                'filename': LaunchConfiguration('filename')
+                'filename': LaunchConfiguration('filename'),
+                'wait_for_drone_ready': LaunchConfiguration('wait_for_drone_ready')
             }]
     )
 
@@ -39,21 +37,6 @@ def generate_launch_description():
 
 
     return LaunchDescription([
-        DeclareLaunchArgument(
-            'publish_frequency',
-            default_value='10.0',
-            description='Publish frequency'
-        ),
-        DeclareLaunchArgument(
-            'add_initial_target',
-            default_value='false',
-            description='Add initial target'
-        ),
-        DeclareLaunchArgument(
-            'synchronize_target',
-            default_value='false',
-            description='Synchronize target'
-        ),
         DeclareLaunchArgument(
             'filename',
             default_value='RLS',

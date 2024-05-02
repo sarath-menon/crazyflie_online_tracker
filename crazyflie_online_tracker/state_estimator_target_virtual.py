@@ -10,10 +10,12 @@ from scipy import linalg
 from scipy.spatial.transform import Rotation
 from crazyflie_online_tracker_interfaces.msg import TargetState
 from crazyflie_online_tracker_interfaces.srv import PublishSingleTarget
+from crazyflie_online_tracker_interfaces.srv import DroneStatus
 from visualization_msgs.msg import Marker
 from .state_estimator import StateEstimator, MotionIndex
 import std_msgs.msg
 import time
+import sys
 
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
@@ -50,6 +52,14 @@ class TargetStateEstimator(StateEstimator):
         self.service = self.node.create_service(PublishSingleTarget, '/publish_single_target', self.handle_publish_single_target)
         self.target_marker_pub = self.node.create_publisher(Marker, '/target_marker', 10)
 
+        # # service client
+        # self.cli = self.node.create_client(DroneStatus, 'drone_status')
+        # while not self.cli.wait_for_service(timeout_sec=1.0):
+        #     self.node.get_logger().info('service not available, waiting again...')
+        # self.req = DroneStatus.Request()
+        # self.future = self.cli.call_async(self.req)
+
+
         # self.delta_t = 0.1 # model discretion timestep
         self.delta_t = float(1/f)
         self.target = target
@@ -57,18 +67,7 @@ class TargetStateEstimator(StateEstimator):
         # declare params
         self.node.declare_parameter('wait_for_drone_ready', False)
 
-        # set wait_for_drone_ready to true
-        all_new_parameters = [rclpy.parameter.Parameter(
-            'wait_for_drone_ready',
-            rclpy.Parameter.Type.BOOL,
-            True
-        )]
-        self.node.set_parameters(all_new_parameters)
-
-        self.node.set_parameters([rclpy.parameter.Parameter('wait_for_drone_ready', rclpy.Parameter.Type.BOOL, True)])
-
-         # get params
-        self.wait_for_drone_ready = self.node.get_parameter('wait_for_drone_ready')
+        # self.wait_for_drone_ready = False
 
          # timer callbacks
         self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
@@ -132,7 +131,7 @@ class TargetStateEstimator(StateEstimator):
         self.S_circular[2:, 2:] = np.array([[np.cos(delta_theta), -np.sin(delta_theta)],
                                             [np.sin(delta_theta),  np.cos(delta_theta)]])
 
-        # for SQUARE target
+        # for SQUARE targetexit()
         self.motion = MotionIndex.stop
         self.forwardMax = 0.5
         self.sideMax = 0.5
@@ -183,13 +182,29 @@ class TargetStateEstimator(StateEstimator):
 
         rclpy.spin(self.node)
 
+    def send_request(self, is_drone_ready):
+        self.req.is_drone_ready = is_drone_ready
+        
+        rclpy.spin_until_future_complete(self.node, self.future)
+        return self.future.result()
+
+
+    # def timer_callback(self):
+    #     # wait_for_drone_ready = self.node.get_parameter('wait_for_drone_ready')
+    #     if self.wait_for_drone_ready == True:
+    #         self.publish_state()
+    #     else:
+    #         self.node.get_logger().info("Waiting for drone ready")
+    #         response = self.send_request(self.wait_for_drone_ready)
+    #         self.wait_for_drone_ready = response.is_drone_ready
+    #         self.node.get_logger().info("is drone ready client: %d" % response.is_drone_ready)
 
     def timer_callback(self):
-        # if self.wait_for_drone_ready.value == True:
-        #     self.publish_state()
+        wait_for_drone_ready = self.node.get_parameter('wait_for_drone_ready')
+        if wait_for_drone_ready.value == True:
+            self.publish_state()
         # else:
         #     self.node.get_logger().info("Waiting for drone ready")
-        self.publish_state()
 
     def publish_state(self):
         if target == 'stationary_target':
@@ -226,7 +241,7 @@ class TargetStateEstimator(StateEstimator):
             marker.action = Marker.ADD
             marker.pose.position.x = self.state.pose.position.x
             marker.pose.position.y = self.state.pose.position.y
-            marker.pose.position.z = self.state.pose.position.z
+            marker.pose.position.z = self.state.pose.position.z - 0.05
             # marker.pose.orientation.x = self.state.pose.orientation.x
             # marker.pose.orientation.y = self.state.pose.orientation.y
             # marker.pose.orientation.z = self.state.pose.orientation.z
@@ -238,7 +253,7 @@ class TargetStateEstimator(StateEstimator):
             marker.color.r = 0.0
             marker.color.g = 0.0
             marker.color.b = 1.0
-            marker.lifetime.sec = 2
+            marker.lifetime.sec = 1
             self.target_marker_pub.publish(marker)
 
             return True

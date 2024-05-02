@@ -13,7 +13,7 @@ from datetime import datetime
 from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 from geometry_msgs.msg import Twist
 import signal
-
+from crazyflie_online_tracker_interfaces.srv import DroneStatus
 import time
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
@@ -55,6 +55,10 @@ class DefaultController(Controller):
 
          # declare params
         self.node.declare_parameter('filename', 'Filename')
+        self.node.declare_parameter('wait_for_drone_ready', False)
+
+        # # services
+        # self.srv = self.node.create_service(DroneStatus, 'drone_status', self.drone_status_callback)
 
         # get params
         self.filename = self.node.get_parameter('filename')
@@ -93,7 +97,13 @@ class DefaultController(Controller):
     def exit_handler(self, signum, frame):
         print("Sending land command")
         self.land()
-        exit(1)
+        time.sleep(2)
+        exit()
+
+    def drone_status_callback(self, request, response):
+        response.is_drone_ready = self.drone_ready
+        self.node.get_logger().info("is drone ready server: %d" % response.is_drone_ready)
+        return response
 
     def check_drone_at_position(self, pos=np.array([0, 0, 0])):
         drone_state = self.drone_state_raw_log[-1]
@@ -101,7 +111,7 @@ class DefaultController(Controller):
 
         tol_x = 0.1
         tol_y = 0.1
-        tol_z = 0.1
+        tol_z = 0.05
 
         position_diff = np.abs([x - pos[0], y - pos[1], z - pos[2]])
         x_diff, y_diff, z_diff = position_diff
@@ -120,8 +130,8 @@ class DefaultController(Controller):
 
         self.node.get_logger().info(f"Controller state: {self.controller_state}")
 
-        if len(self.drone_state_raw_log) == 0 or len(self.target_state_raw_log) == 0:
-            self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
+        if len(self.drone_state_raw_log) == 0:
+            self.node.get_logger().info('No drone state estimate is available. Skipping.')
             return
 
             # if self.save_log: # the simulation had started and has now been terminated
@@ -143,14 +153,17 @@ class DefaultController(Controller):
             if self.t >= T:
                 self.node.get_logger().info('Simulation finished.')
                 self.land()
-                return
 
-            if self.drone_ready == False:
+            elif self.drone_ready == False:
                 if self.check_drone_at_position(pos=self.hover_position ) == False:
                     self.go_to_position(self.hover_position )
                     self.node.get_logger().info("Going to initial position")
                 else:
                     self.drone_ready = True
+                    os.system("ros2 param set /state_estimator_target_virtual wait_for_drone_ready True")
+
+            elif len(self.target_state_raw_log) == 0:
+                self.node.get_logger().info('No target state estimate is available. Skipping.')
 
             else:
                 t0 = time.time()
@@ -201,6 +214,9 @@ class DefaultController(Controller):
 
     def compute_setpoint(self, desired_pos=None):
 
+        if len(self.target_state_raw_log) == 0:
+            self.target_state_raw_log.append(self.drone_state_raw_log[-1])
+
         drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]
 
@@ -214,34 +230,35 @@ class DefaultController(Controller):
         if desired_pos is not None:
             target_state[:3] = desired_pos.reshape(3,1)
 
-        # option 1: rotated error + smoothed setpoint: NOT USED
-        if self.last_setpoint is None:
-            self.last_setpoint = drone_state[:3]
+        # # option 1: rotated error + smoothed setpoint: NOT USED
+        # if self.last_setpoint is None:
+        #     self.last_setpoint = drone_state[:3]
 
-        desired_pos_limited = self.limit_pos_change(self.last_setpoint, target_state[:3])
-        error_limited = drone_state - target_state
-        error_limited[0] = drone_state[0] - desired_pos_limited[0]
-        error_limited[1] = drone_state[1] - desired_pos_limited[1]
-        error_limited[2] = drone_state[2] - desired_pos_limited[2]
-        self.last_setpoint = desired_pos_limited
-        # self.node.get_logger().info("setpoint limited:" + str(desired_pos_limited))
-        [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR_controller(self.K_star, error_limited, drone_state[8])
-        action_rotated_limited = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
+        # desired_pos_limited = self.limit_pos_change(self.last_setpoint, target_state[:3])
+        # error_limited = drone_state - target_state
+        # error_limited[0] = drone_state[0] - desired_pos_limited[0]
+        # error_limited[1] = drone_state[1] - desired_pos_limited[1]
+        # error_limited[2] = drone_state[2] - desired_pos_limited[2]
+        # self.last_setpoint = desired_pos_limited
+
+        # # self.node.get_logger().info("setpoint limited:" + str(desired_pos_limited))
+        # [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR_controller(self.K_star, error_limited, drone_state[8])
+        # action_rotated_limited = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
 
         # option 2: rotated error: USED
         error = drone_state - target_state
         [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star, error, drone_state[8])
         action_rotated = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
 
-        # option 3: naive LQR: NOT USED
-        error = drone_state - target_state
-        action_naive = -self.K_star@error
-        action_naive[0] = action_naive[0] + self.m*self.g
+        # # option 3: naive LQR: NOT USED
+        # error = drone_state - target_state
+        # action_naive = -self.K_star@error
+        # action_naive[0] = action_naive[0] + self.m*self.g
         
-        roll_rate = action_naive[1].copy()
-        pitch_rate = action_naive[2].copy()
-        action_naive[1] = pitch_rate
-        action_naive[2] = roll_rate
+        # roll_rate = action_naive[1].copy()
+        # pitch_rate = action_naive[2].copy()
+        # action_naive[1] = pitch_rate
+        # action_naive[2] = roll_rate
 
         action = action_rotated # option 2msg.omega.x
         self.action_log.append(action)

@@ -114,19 +114,19 @@ class Controller():
         self.B = self.delta_t*B_outer
         # loss function: l_t = (x_t - g_t)^TQ(x_t - g_t) + u_t^Tu_t
 
-        self.Q = np.diag([80, 80, 80, 10, 20, 10, 1, 1, 1]) #working
+        self.Q = np.diag([80, 80, 80, 10, 10, 10, 0.01, 0.01, 0.01]) #working
         #self.Q = np.diag([80, 80, 80, 10, 10, 10, 0.01, 0.01, 0.1])
 
-        # self.Q_takeoff = np.diag([10, 10, 10, 1, 1, 1, 1, 1, 1]) #old
-        self.Q_takeoff = np.diag([30, 30, 30, 1, 1, 1, 1, 1, 1])
+        self.Q_takeoff = np.diag([10, 10, 10, 1, 1, 1, 1, 1, 1]) #old
         
         # self.Q = self.Q_takeoff
         # self.Q += 1e-5*np.eye(9) # necessary for DARE to be solvable.
 
-        #self.R = np.diag([0.2, 2.5, 2.5, 2.5]) # working
-        self.R = np.diag([0.7, 2.5, 2.5, 2.5])
+        self.R = np.diag([0.2, 2.5, 2.5, 2.5]) # working
+        # self.R = np.diag([0.7, 2.5, 2.5, 2.5])
         self.R_takeoff = np.diag([0.1, 0.8, 0.8, 0.1])
-        # self.R = self.R_takeoff
+        # self.R = self.R_takeoff        
+
         self.K_star_takeoff, self.P_star_takeoff = self.solve_K_star(self.Q_takeoff, self.R_takeoff)
         self.K_star, self.P_star = self.solve_K_star(self.Q, self.R)
 
