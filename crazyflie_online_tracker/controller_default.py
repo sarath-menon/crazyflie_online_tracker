@@ -97,7 +97,6 @@ class DefaultController(Controller):
     def exit_handler(self, signum, frame):
         print("Sending land command")
         self.land()
-        time.sleep(2)
         exit()
 
     def drone_status_callback(self, request, response):
@@ -167,7 +166,7 @@ class DefaultController(Controller):
 
             else:
                 t0 = time.time()
-                self.publish_setpoint()
+                self.track_setpoint()
                 t1 = time.time()
                 self.Time+= (t1-t0)
                 self.Time_T+= 1
@@ -196,9 +195,9 @@ class DefaultController(Controller):
         self.t += self.delta_t
         self.node.get_logger().info("Time: " + str(self.t))
 
-    def go_to_position(self, desired_pos):
-        self.compute_setpoint(desired_pos=desired_pos)
-        self.publish_setpoint()
+    # def go_to_position(self, desired_pos):
+    #     self.compute_setpoint(desired_pos=desired_pos)
+    #     self.track_setpoint()
 
     def set_to_manual_mode(self):
         # Publish empty setpoints to ensure the drone remains stationary
@@ -208,14 +207,44 @@ class DefaultController(Controller):
         # Publish the empty setpoint multiple times
         for _ in range(10):
             self.controller_command_pub.publish(empty_setpoint)
+            time.sleep(0.1)
         
         self.node.get_logger().info("Published empty setpoint for manual mode")
+
+    def go_to_position(self, desired_pos, desired_velocity=np.array([0.0, 0.0, 0.0])):
+
+        drone_state = self.drone_state_raw_log[-1]
+
+        target_state = np.array([desired_pos[0], desired_pos[1], desired_pos[2], 
+                                 desired_velocity[0], desired_velocity[1], desired_velocity[2], 
+                                 0, 0, 0]).reshape(9, 1)
+
+          # option 2: rotated error: USEDs
+        error = drone_state - target_state
+        [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star, error, drone_state[8])
+        action_rotated = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
+
+        action = action_rotated # option 2msg.omega.x
+        self.action_log.append(action)
+        setpoint = CommandOuter()
+
+        # setpoint.header.stamp.sec = self.t
+        setpoint.thrust = float(action[0])
+        setpoint.omega.x = float(action[1]) # pitch rate
+        setpoint.omega.y = float(action[2]) # roll rate
+        setpoint.omega.z = float(action[3]) # yaw rate'
+
+        self.setpoint = setpoint
+
+         # # Rescale thrust from (0,0.56) to (0,60000)
+        thrust_motor = setpoint.thrust/ 4
+        setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
+
+        self.controller_command_pub.publish(self.setpoint)
+
            
 
     def compute_setpoint(self, desired_pos=None):
-
-        if len(self.target_state_raw_log) == 0:
-            self.target_state_raw_log.append(self.drone_state_raw_log[-1])
 
         drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]
@@ -223,42 +252,10 @@ class DefaultController(Controller):
         self.drone_state_log.append(drone_state)
         self.target_state_log.append(target_state)
         
-
-        # self.node.get_logger().info("observe target[default]:" + str(target_state))
-        # self.node.get_logger().info("current state[default]: " + str(drone_state))
-
-        if desired_pos is not None:
-            target_state[:3] = desired_pos.reshape(3,1)
-
-        # # option 1: rotated error + smoothed setpoint: NOT USED
-        # if self.last_setpoint is None:
-        #     self.last_setpoint = drone_state[:3]
-
-        # desired_pos_limited = self.limit_pos_change(self.last_setpoint, target_state[:3])
-        # error_limited = drone_state - target_state
-        # error_limited[0] = drone_state[0] - desired_pos_limited[0]
-        # error_limited[1] = drone_state[1] - desired_pos_limited[1]
-        # error_limited[2] = drone_state[2] - desired_pos_limited[2]
-        # self.last_setpoint = desired_pos_limited
-
-        # # self.node.get_logger().info("setpoint limited:" + str(desired_pos_limited))
-        # [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR_controller(self.K_star, error_limited, drone_state[8])
-        # action_rotated_limited = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
-
         # option 2: rotated error: USED
         error = drone_state - target_state
         [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star, error, drone_state[8])
         action_rotated = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
-
-        # # option 3: naive LQR: NOT USED
-        # error = drone_state - target_state
-        # action_naive = -self.K_star@error
-        # action_naive[0] = action_naive[0] + self.m*self.g
-        
-        # roll_rate = action_naive[1].copy()
-        # pitch_rate = action_naive[2].copy()
-        # action_naive[1] = pitch_rate
-        # action_naive[2] = roll_rate
 
         action = action_rotated # option 2msg.omega.x
         self.action_log.append(action)
@@ -291,7 +288,7 @@ class DefaultController(Controller):
         disturbance = self.A @ last_target - curr_target
         self.disturbances.append(disturbance)
     
-    def publish_setpoint(self):
+    def track_setpoint(self):
         self.compute_setpoint()
         self.controller_command_pub.publish(self.setpoint)
 
