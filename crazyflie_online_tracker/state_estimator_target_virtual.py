@@ -10,6 +10,7 @@ from scipy import linalg
 from scipy.spatial.transform import Rotation
 from crazyflie_online_tracker_interfaces.msg import TargetState
 from crazyflie_online_tracker_interfaces.srv import PublishSingleTarget
+from visualization_msgs.msg import Marker
 from .state_estimator import StateEstimator, MotionIndex
 import std_msgs.msg
 import time
@@ -47,6 +48,8 @@ class TargetStateEstimator(StateEstimator):
         # publishers and subscribers
         self.state_pub = self.node.create_publisher(TargetState, 'targetState', 10)
         self.service = self.node.create_service(PublishSingleTarget, '/publish_single_target', self.handle_publish_single_target)
+        self.target_marker_pub = self.node.create_publisher(Marker, '/target_marker', 10)
+
         # self.delta_t = 0.1 # model discretion timestep
         self.delta_t = float(1/f)
         self.target = target
@@ -214,6 +217,30 @@ class TargetStateEstimator(StateEstimator):
         if self.curr_state is not None:
             self.set_state_msg(add_noise=add_noise)
             self.state_pub.publish(self.state)
+
+            # publish marker
+            marker = Marker()
+            marker.header.frame_id = 'world'
+            marker.header.stamp = self.node.get_clock().now().to_msg()
+            marker.type = Marker.SPHERE
+            marker.action = Marker.ADD
+            marker.pose.position.x = self.state.pose.position.x
+            marker.pose.position.y = self.state.pose.position.y
+            marker.pose.position.z = self.state.pose.position.z
+            # marker.pose.orientation.x = self.state.pose.orientation.x
+            # marker.pose.orientation.y = self.state.pose.orientation.y
+            # marker.pose.orientation.z = self.state.pose.orientation.z
+            # marker.pose.orientation.w = self.state.pose.orientation.w
+            marker.scale.x = 0.1
+            marker.scale.y = 0.1
+            marker.scale.z = 0.1
+            marker.color.a = 1.0
+            marker.color.r = 0.0
+            marker.color.g = 0.0
+            marker.color.b = 1.0
+            marker.lifetime.sec = 2
+            self.target_marker_pub.publish(marker)
+
             return True
         else:
             self.get_logger().debug("The target state has not been assigned with any value.")
