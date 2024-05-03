@@ -15,6 +15,8 @@ from geometry_msgs.msg import Twist
 import signal
 from crazyflie_online_tracker_interfaces.srv import DroneStatus
 import time
+from crazyflie_interfaces.msg import FullState
+
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
 
@@ -45,7 +47,7 @@ class DefaultController(Controller):
         self.m = m
 
         self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
-        self.controller_command_pub = self.node.create_publisher(CommandOuter, 'controllerCommand', 10)
+        self.controller_command_pub = self.node.create_publisher(FullState, 'controllerCommand', 10)
         self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerStateKF', 10)
 
         self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
@@ -172,7 +174,7 @@ class DefaultController(Controller):
 
         elif self.controller_state == ControllerStates.takeoff:
             self.setpoint = self.takeoff()
-            self.controller_command_pub.publish(self.setpoint)
+            self.publish_setpoint(self.setpoint)
 
         elif self.controller_state == ControllerStates.idle:
                 self.node.get_logger().info("Drone landed")
@@ -200,12 +202,12 @@ class DefaultController(Controller):
 
     def set_to_manual_mode(self):
         # Publish empty setpoints to ensure the drone remains stationary
-        empty_setpoint = CommandOuter()
-        empty_setpoint.thrust = 10000.0
+        empty_setpoint = FullState()
         
         # Publish the empty setpoint multiple times
         for _ in range(10):
-            self.controller_command_pub.publish(empty_setpoint)
+            empty_setpoint.acc.z = 0.1
+            self.publish_setpoint(empty_setpoint)
             time.sleep(0.1)
         
         self.node.get_logger().info("Published empty setpoint for manual mode")
@@ -227,32 +229,52 @@ class DefaultController(Controller):
 
         action = action_rotated # option 2msg.omega.x
         self.action_log.append(action)
-        setpoint = CommandOuter()
 
-        # setpoint.header.stamp.sec = self.t
-        setpoint.thrust = float(action[0])
-        setpoint.omega.x = float(action[1]) # pitch rate
-        setpoint.omega.y = float(action[2]) # roll rate
-        setpoint.omega.z = float(action[3]) # yaw rate'
+        setpoint = FullState()
 
-        self.setpoint = setpoint
+        setpoint.acc.z = float(action[0])
+        setpoint.twist.angular.x = float(action[1]) # pitch rate
+        setpoint.twist.angular.y = float(action[2]) # roll rate
+        setpoint.twist.angular.z = float(action[3]) # yaw rate
 
-         # # Rescale thrust from (0,0.56) to (0,60000)
-        thrust_motor = setpoint.thrust/ 4
-        setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
-
-        self.controller_command_pub.publish(self.setpoint)
+        self.publish_setpoint(setpoint)
 
         # compute disturbance w_t according to the latest drone and target state estimation
         if len(self.target_state_log) < 2:
             return
         else:
             last_target = self.target_state_log[-2]  # r_t
+
             curr_target = self.target_state_log[-1]  # r_{t+1}
 
         # w_t = Ar_t - r_{t+1}
         disturbance = self.A @ last_target - curr_target
         self.disturbances.append(disturbance)
+
+    def publish_setpoint(self, setpoint):
+
+        # # Rescale thrust from (0,0.56) to (0,60000)
+        body_thrust = setpoint.acc.z 
+        thrust_motor = body_thrust / 4
+        setpoint.acc.z  = self.thrust_newton_to_cmd(thrust_motor)
+
+        setpoint.header.stamp.sec = int(self.t)
+
+        if len(self.target_state_raw_log) > 0:
+            target_state = self.target_state_raw_log[-1]
+
+            setpoint.pose.position.x = float(target_state[0])
+            setpoint.pose.position.y = float(target_state[1])
+            setpoint.pose.position.z = float(target_state[2])
+
+            setpoint.twist.linear.x = float(target_state[3])
+            setpoint.twist.linear.y = float(target_state[4])
+            setpoint.twist.linear.z = float(target_state[5])
+
+        self.setpoint = setpoint
+        self.controller_command_pub.publish(self.setpoint)
+
+        self.node.get_logger().info("Thrust: " + str(setpoint.acc.z))
     
 
            
@@ -272,18 +294,28 @@ class DefaultController(Controller):
 
         action = action_rotated # option 2msg.omega.x
         self.action_log.append(action)
-        setpoint = CommandOuter()
 
-        # setpoint.header.stamp.sec = self.t
-        setpoint.thrust = float(action[0])
-        setpoint.omega.x = float(action[1]) # pitch rate
-        setpoint.omega.y = float(action[2]) # roll rate
-        setpoint.omega.z = float(action[3]) # yaw rate
-        # self.node.get_logger().info('error:'+str(action))
+        
+        # setpoint = CommandOuter()
 
-        # # Rescale thrust from (0,0.56) to (0,60000)
-        thrust_motor = setpoint.thrust/ 4
-        setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
+        # # setpoint.header.stamp.sec = self.t
+        # setpoint.thrust = float(action[0])
+        # setpoint.omega.x = float(action[1]) # pitch rate
+        # setpoint.omega.y = float(action[2]) # roll rate
+        # setpoint.omega.z = float(action[3]) # yaw rate
+        # # self.node.get_logger().info('error:'+str(action))
+
+        # # # Rescale thrust from (0,0.56) to (0,60000)
+        # thrust_motor = setpoint.thrust/ 4
+        # setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
+
+        setpoint = FullState()
+
+        setpoint.acc.z = float(action[0])
+        setpoint.twist.angular.x = float(action[1]) # pitch rate
+        setpoint.twist.angular.y = float(action[2]) # roll rate
+        setpoint.twist.angular.z = float(action[3]) # yaw rate
+
 
         disturbance_feedback = np.zeros((4,1))
         self.action_DF_log.append(disturbance_feedback)
@@ -303,7 +335,7 @@ class DefaultController(Controller):
     
     def track_setpoint(self):
         self.compute_setpoint()
-        self.controller_command_pub.publish(self.setpoint)
+        self.publish_setpoint(self.setpoint)
 
     def takeoff_autonomous(self):
         self.setpoint = CommandOuter()

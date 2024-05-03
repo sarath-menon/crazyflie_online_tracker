@@ -11,6 +11,7 @@ from scipy import linalg
 from std_msgs.msg import Empty
 import yaml
 import queue
+from crazyflie_interfaces.msg import FullState
 
 from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 
@@ -346,7 +347,7 @@ class Controller():
         takeoff_start_height = 0.1
         takeoff_end_height = 0.4
 
-        command = CommandOuter()
+        command = FullState()
         
         if time_takeoff <= time_spin_motor:
             self.node.get_logger().info("takeoff: spin motor for "+str(time_takeoff)+' seconds')
@@ -355,11 +356,7 @@ class Controller():
             
             time_proportion = min(1, self.t/time_spin_motor)
 
-            command.thrust = float(min_spin_motor_thrust_total + (max_spin_motor_thrust_total - min_spin_motor_thrust_total) * time_proportion)
-            command.omega.x = 0.0
-            command.omega.y = 0.0
-            command.omega.z = 0.0
-
+            command.acc.z = float(min_spin_motor_thrust_total + (max_spin_motor_thrust_total - min_spin_motor_thrust_total) * time_proportion)
 
         elif time_takeoff <= time_spin_motor+time_move_up:
             self.node.get_logger().info("takeoff: move up for "+str(time_takeoff)+' seconds')
@@ -380,10 +377,10 @@ class Controller():
             # self.node.get_logger().info('action:'+str([thrust, roll_rate, pitch_rate, yaw_rate]))
             # assign desired values to command as defined in the dfall decoder at the onborad firmware
      
-            command.thrust = float(thrust)
-            command.omega.x = float(pitch_rate)
-            command.omega.y = float(roll_rate)
-            command.omega.z = float(yaw_rate)
+            command.acc.z = float(thrust)
+            command.twist.linear.x = float(pitch_rate)
+            command.twist.linear.y = float(roll_rate)
+            command.twist.linear.z = float(yaw_rate)
         else:
             if self.takeoff_phase < 3:
                 self.takeoff_phase = 3
@@ -404,10 +401,10 @@ class Controller():
             [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star_takeoff, error_inertial, drone_state[8])
             # assign desired values to command as defined in the dfall decoder at the onborad firmware
             
-            command.thrust = float(thrust)
-            command.omega.x = float(pitch_rate)
-            command.omega.y = float(roll_rate)
-            command.omega.z = float(yaw_rate)
+            command.acc.z = float(thrust)
+            command.twist.linear.x = float(pitch_rate)
+            command.twist.linear.y = float(roll_rate)
+            command.twist.linear.z = float(yaw_rate)
 
             time_condition = time_takeoff > time_spin_motor + time_move_up + time_goto_setpoint
             position_tolerance = [0.1, 0.1, 0.05]
@@ -426,8 +423,8 @@ class Controller():
                 self.controller_state = ControllerStates.flight
                 self.last_setpoint = self.setpoint_takeoff
 
-        command.thrust = self.thrust_newton_to_cmd(command.thrust)
-        self.node.get_logger().info('Takeoff command: '+str(command.thrust))
+        # command.thrust = self.thrust_newton_to_cmd(command.thrust)
+        # self.node.get_logger().info('Takeoff command: '+str(command.thrust))
         return command
 
     def thrust_newton_to_cmd(self, thrust):
