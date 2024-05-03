@@ -81,7 +81,7 @@ class DefaultController(Controller):
 
         # takeoff drone
         self.initial_position = np.array([0, 0, 0])
-        self.hover_position = np.array([0, 0, 0.3])
+        self.hover_position = np.array([0, 0, 0.4])
 
         self.set_to_manual_mode()
         time.sleep(4)
@@ -132,26 +132,25 @@ class DefaultController(Controller):
         if len(self.drone_state_raw_log) == 0:
             self.node.get_logger().info('No drone state estimate is available. Skipping.')
             return
-
-            # if self.save_log: # the simulation had started and has now been terminated
-
-            #     additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
-            #     if filtering:
-            #         additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
-            #     new_filename = self.filename.value + additional_info
-            #     self.save_data(new_filename) # save log data to file for evaluation
-            #     time.sleep(2)
-            #     if self.plot:
-            #         self.node.get_logger().info('Printing the figures')
-            #         os.system("python3 ../crazyflie_online_tracker/plot.py")
-
-            # exit()
-
             
         if self.controller_state == ControllerStates.flight:
             if self.t >= T:
                 self.node.get_logger().info('Simulation finished.')
                 self.land()
+
+                if self.save_log: # the simulation had started and has now been terminated
+                    additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
+                    if filtering:
+                        additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
+                    new_filename = self.filename.value + additional_info
+                    self.save_data(new_filename) # save log data to file for evaluation
+
+                    # if self.plot:
+                    #     self.node.get_logger().info('Printing the figures')
+                    #     os.system("python3 ../crazyflie_online_tracker/plot_mine.py")
+
+                # exit()
+
 
             elif self.drone_ready == False:
                 if self.check_drone_at_position(pos=self.hover_position ) == False:
@@ -219,6 +218,8 @@ class DefaultController(Controller):
                                  desired_velocity[0], desired_velocity[1], desired_velocity[2], 
                                  0, 0, 0]).reshape(9, 1)
 
+        self.target_state_raw_log.append(target_state)
+
           # option 2: rotated error: USEDs
         error = drone_state - target_state
         [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star, error, drone_state[8])
@@ -242,9 +243,21 @@ class DefaultController(Controller):
 
         self.controller_command_pub.publish(self.setpoint)
 
+        # compute disturbance w_t according to the latest drone and target state estimation
+        if len(self.target_state_log) < 2:
+            return
+        else:
+            last_target = self.target_state_log[-2]  # r_t
+            curr_target = self.target_state_log[-1]  # r_{t+1}
+
+        # w_t = Ar_t - r_{t+1}
+        disturbance = self.A @ last_target - curr_target
+        self.disturbances.append(disturbance)
+    
+
            
 
-    def compute_setpoint(self, desired_pos=None):
+    def compute_setpoint(self):
 
         drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]

@@ -1289,9 +1289,9 @@ if __name__ == '__main__':
         action_log.append(action)
         action_DF_log.append(action_DF)
         disturbances_log.append(disturbances)
-        cost, error = plotter.compute_cost_and_error(drone, target, action)
-        cost_log.append(cost)
-        error_log.append(error)
+        # cost, error = plotter.compute_cost_and_error(drone, target, action)
+        # cost_log.append(cost)
+        # error_log.append(error)
 
         # State Plot
         # plotter.plot_state([drone, target], alg_names[idx] + '_states')
