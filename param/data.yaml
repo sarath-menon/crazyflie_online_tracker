@@ -1,6 +1,6 @@
 # Parameters
 f: 50
-T: 50
+T: 100
 W_RLS: 5
 gamma_RLS: 0.8
 is_sim: True
