@@ -1,13 +1,13 @@
 # Parameters
-f: 10
-T: 50
+f: 50
+T: 100
 W_RLS: 5
 gamma_RLS: 0.8
 is_sim: True
 
 
 # Mass: 0.025 for simulation # 0.034 for CF with markers and battery
-m: 0.025
+m: 0.034
 
 # Kalman Filter
 filtering: False

@@ -10,6 +10,8 @@ from datetime import datetime
 from scipy import linalg
 from std_msgs.msg import Empty
 import yaml
+import queue
+from crazyflie_interfaces.msg import FullState
 
 from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
 
@@ -61,7 +63,7 @@ class Controller():
         self.node = None
 
         # INITIALIZATION OF CONTROLLER STATE
-        self.controller_state = ControllerStates.stop
+        self.controller_state = ControllerStates.idle
 
         self.controller_state_sub = None
         self.controller_command_pub = None
@@ -113,16 +115,19 @@ class Controller():
         self.B = self.delta_t*B_outer
         # loss function: l_t = (x_t - g_t)^TQ(x_t - g_t) + u_t^Tu_t
 
-        #self.Q = np.diag([80, 80, 80, 10, 20, 10, 1, 1, 1]) #working
-        self.Q = np.diag([80, 80, 80, 10, 10, 10, 0.01, 0.01, 0.1])
-        self.Q_takeoff = np.diag([10, 10, 10, 1, 1, 1, 1, 1, 1])
+        self.Q = np.diag([80, 80, 80, 10, 10, 10, 0.01, 0.01, 0.01]) #working
+        #self.Q = np.diag([80, 80, 80, 10, 10, 10, 0.01, 0.01, 0.1])
+
+        self.Q_takeoff = np.diag([10, 10, 10, 1, 1, 1, 1, 1, 1]) #old
+        
         # self.Q = self.Q_takeoff
         # self.Q += 1e-5*np.eye(9) # necessary for DARE to be solvable.
 
-        #self.R = np.diag([0.2, 2.5, 2.5, 2.5]) # working
-        self.R = np.diag([0.7, 2.5, 2.5, 2.5])
+        self.R = np.diag([0.2, 2.5, 2.5, 2.5]) # working
+        # self.R = np.diag([0.7, 2.5, 2.5, 2.5])
         self.R_takeoff = np.diag([0.1, 0.8, 0.8, 0.1])
-        # self.R = self.R_takeoff
+        # self.R = self.R_takeoff        
+
         self.K_star_takeoff, self.P_star_takeoff = self.solve_K_star(self.Q_takeoff, self.R_takeoff)
         self.K_star, self.P_star = self.solve_K_star(self.Q, self.R)
 
@@ -169,7 +174,7 @@ class Controller():
         drone_state[StateIndex.roll] = euler[2]
         drone_state[StateIndex.pitch] = euler[1]
         drone_state[StateIndex.yaw] = euler[0]
-        # self.get_logger().info(f"state: {drone_state}")
+        # self.node.get_logger().info(f"state: {drone_state}")
         self.drone_state_raw_log.append(drone_state)
 
     def callback_state_drone_filtered(self, data):
@@ -189,7 +194,7 @@ class Controller():
         filtered_drone_state[StateIndex.roll] = euler[2]
         filtered_drone_state[StateIndex.pitch] = euler[1]
         filtered_drone_state[StateIndex.yaw] = euler[0]
-        # self.get_logger().info(f"state: {filtered_drone_state}")
+        # self.node.get_logger().info(f"state: {filtered_drone_state}")
         self.filtered_drone_state_raw_log.append(filtered_drone_state)
 
     def callback_system_output(self, data):
@@ -209,7 +214,7 @@ class Controller():
         output[StateIndex.roll] = euler[2]
         output[StateIndex.pitch] = euler[1]
         output[StateIndex.yaw] = euler[0]
-        # self.get_logger().info(f"state: {drone_state}")
+        # self.node.get_logger().info(f"state: {drone_state}")
         self.system_output_raw_log.append(output)
 
     def callback_state_target(self, data):
@@ -238,14 +243,13 @@ class Controller():
 
     def callback_controller_state(self, data: CommandOuter):
         self.controller_state = data.state
-        if self.controller_state == ControllerStates.normal:
-            self.node.get_logger().info('Controller state is changed to NORMAL.')
+        if self.controller_state == ControllerStates.flight:
+            self.node.get_logger().info('Controller state is changed to Flight.')
         elif self.controller_state == ControllerStates.takeoff:
             self.node.get_logger().info('Controller state is changed to TAKEOFF.')
         elif self.controller_state == ControllerStates.landing:
             self.node.get_logger().info('Controller state is changed to LANDING.')
-        elif self.controller_state == ControllerStates.stop:
-            self.node.get_logger().info('Controller state is changed to STOP.')
+
 
     def safe_shutdown(self):
         # place holder
@@ -262,7 +266,7 @@ class Controller():
         """
         The default controller used for takeoff and landing. The value of LQR gains are taken from dfall_pkg/src/nodes/DefaultControllerService.cpp
         """
-        # self.get_logger().info("error_inertial: "+str(error_inertial))
+        # self.node.get_logger().info("error_inertial: "+str(error_inertial))
         # clip the error
         max_error_xy = 0.3
         error_x_inertial = max(min(error_inertial[0], max_error_xy), -max_error_xy)
@@ -273,7 +277,7 @@ class Controller():
         max_error_yaw = np.deg2rad(60)
         error_yaw_inertial = max(min(error_yaw_inertial, max_error_yaw), -max_error_yaw)
         # convert error from inertial frame to body frame to compensate the linearization error of yaw!=0
-        # self.get_logger().info("real error: " + str(error_inertial))
+        # self.node.get_logger().info("real error: " + str(error_inertial))
         sinyaw = np.sin(curr_yaw)
         cosyaw = np.cos(curr_yaw)
         error_body = error_inertial.copy()
@@ -282,9 +286,11 @@ class Controller():
         error_body[2] = error_z_inertial
         error_body[3] = error_inertial[3]*cosyaw + error_inertial[4]*sinyaw
         error_body[4] = error_inertial[4]*cosyaw - error_inertial[3]*sinyaw
-        # self.get_logger().info("error_body: "+str(error_body))
+        # self.node.get_logger().info("error_body: "+str(error_body))
         u = -K_star@error_body.reshape([9, 1])
         thrust = u[0] + self.m*self.g
+        #thrust =  self.m*self.g
+
         roll_rate = u[1]
         pitch_rate = u[2]
         yaw_rate = u[3]
@@ -294,7 +300,7 @@ class Controller():
         """
         The default controller used for takeoff and landing. The value of LQR gains are taken from dfall_pkg/src/nodes/DefaultControllerService.cpp
         """
-        # self.get_logger().info("error_inertial: "+str(error_inertial))
+        # self.node.get_logger().info("error_inertial: "+str(error_inertial))
         # clip the error
         max_error_xy = 0.3
         error_x_inertial = max(min(error_inertial[0], max_error_xy), -max_error_xy)
@@ -304,7 +310,7 @@ class Controller():
         error_yaw_inertial = wrap_angle(error_inertial[8])
         max_error_yaw = np.deg2rad(60)
         # convert error from inertial frame to body frame to compensate the linearization error of yaw!=0
-        # self.get_logger().info("real error: " + str(error_inertial))
+        # self.node.get_logger().info("real error: " + str(error_inertial))
         error_body = error_inertial.copy()
         error_body[0] = error_x_inertial
         error_body[1] = error_y_inertial
@@ -313,21 +319,26 @@ class Controller():
         error_body[4] = error_inertial[4]
         u = -K_star@error_body.reshape([9, 1])
         thrust = u[0] + self.m*self.g
-        # self.get_logger().info("u[0] " + str(u[0]))
+        # self.node.get_logger().info("u[0] " + str(u[0]))
         roll_rate = u[1]
         pitch_rate = u[2]
         yaw_rate = u[3]
         return thrust, roll_rate, pitch_rate, yaw_rate
 
 
-    def takeoff(self, drone_state, desired_pos=None):
+    def takeoff(self, desired_pos=np.array([0, 0, 0.3])):
+        drone_state = self.drone_state_raw_log[-1]
+        self.setpoint_takeoff = drone_state[:3]
+
         if self.t_takeoff_start is None:
             self.t_takeoff_start = self.t
-            time_takeoff = 0
+            time_takeoff = 0.0
         else:
             time_takeoff = self.t - self.t_takeoff_start
+
         time_spin_motor = 0.8 # phase1: gradually increase thrust
         time_move_up = 2 # phase2: gradually move to 0.3m high and desired yaw angle(dfall_pkg use 0.4m)
+        
         time_goto_setpoint = 2 # phase3: fly to the desired (x, y, z) position
         min_spin_motor_cmd = 1000
         min_spin_motor_thrust_total = 4*thrust_cmd_to_newton(min_spin_motor_cmd)
@@ -335,21 +346,23 @@ class Controller():
         max_spin_motor_thrust_total = 4*thrust_cmd_to_newton(max_spin_motor_cmd)
         takeoff_start_height = 0.1
         takeoff_end_height = 0.4
+
+        command = FullState()
+        
         if time_takeoff <= time_spin_motor:
-            self.get_logger().info("takeoff: spin motor for "+str(time_takeoff)+' seconds')
+            self.node.get_logger().info("takeoff: spin motor for "+str(time_takeoff)+' seconds')
             if self.takeoff_phase < 1:
                 self.takeoff_phase = 1
-            command = CommandOuter()
+            
             time_proportion = min(1, self.t/time_spin_motor)
-            command.thrust = min_spin_motor_thrust_total + (max_spin_motor_thrust_total - min_spin_motor_thrust_total)*time_proportion
-            command.omega.x = 0
-            command.omega.y = 0
-            command.omega.z = 0
+
+            command.acc.z = float(min_spin_motor_thrust_total + (max_spin_motor_thrust_total - min_spin_motor_thrust_total) * time_proportion)
+
         elif time_takeoff <= time_spin_motor+time_move_up:
-            self.get_logger().info("takeoff: move up for "+str(time_takeoff)+' seconds')
+            self.node.get_logger().info("takeoff: move up for "+str(time_takeoff)+' seconds')
             if self.takeoff_phase < 2:
                 self.takeoff_phase = 2
-                self.setpoint_takeoff = drone_state[:3]
+
             time_proportion = min(1, (time_takeoff-time_spin_motor)/(0.8*time_move_up)) # gradually increase the deired height and yaw angle
             desired_height = self.setpoint_takeoff[2] + takeoff_start_height + (takeoff_end_height - takeoff_start_height)*time_proportion
             error_inertial = drone_state.copy()
@@ -359,15 +372,15 @@ class Controller():
             # error_inertial[8] = 0
             error_inertial[8] = wrap_angle(drone_state[8]) * time_proportion
             [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star_takeoff, error_inertial, drone_state[8])
-            self.get_logger().info('drone state:'+str(drone_state))
-            self.get_logger().info('error:'+str(error_inertial))
-            self.get_logger().info('action:'+str([thrust, roll_rate, pitch_rate, yaw_rate]))
+            # self.node.get_logger().info('drone state:'+str(drone_state))
+            # self.node.get_logger().info('error:'+str(error_inertial))
+            # self.node.get_logger().info('action:'+str([thrust, roll_rate, pitch_rate, yaw_rate]))
             # assign desired values to command as defined in the dfall decoder at the onborad firmware
-            command = CommandOuter()
-            command.thrust = thrust
-            command.omega.x = pitch_rate
-            command.omega.y = roll_rate
-            command.omega.z = yaw_rate
+     
+            command.acc.z = float(thrust)
+            command.twist.linear.x = float(pitch_rate)
+            command.twist.linear.y = float(roll_rate)
+            command.twist.linear.z = float(yaw_rate)
         else:
             if self.takeoff_phase < 3:
                 self.takeoff_phase = 3
@@ -375,9 +388,11 @@ class Controller():
             if desired_pos is None:
                 desired_pos = self.setpoint_takeoff
             desired_pos_limited = self.limit_pos_change(self.setpoint_takeoff, desired_pos)
-            self.get_logger().info("takeoff: goto setpoint")
-            self.get_logger().info('desired pos: '+str(desired_pos))
-            self.get_logger().info('desired pos limited: '+str(desired_pos_limited))
+            self.node.get_logger().info("takeoff phase 3: goto setpoint")
+
+            
+            # self.node.get_logger().info('desired pos limited: '+str(desired_pos_limited))
+            
             error_inertial = drone_state.copy()
             error_inertial[0] = drone_state[0] - desired_pos_limited[0]
             error_inertial[1] = drone_state[1] - desired_pos_limited[1]
@@ -385,24 +400,59 @@ class Controller():
             self.setpoint_takeoff = desired_pos_limited
             [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star_takeoff, error_inertial, drone_state[8])
             # assign desired values to command as defined in the dfall decoder at the onborad firmware
-            command = CommandOuter()
-            command.thrust = thrust
-            command.omega.x = pitch_rate
-            command.omega.y = roll_rate
-            command.omega.z = yaw_rate
-            if time_takeoff > time_spin_motor + time_move_up + time_goto_setpoint or \
-                (np.abs(drone_state[0] - desired_pos[0]) < 0.2 and \
-                 np.abs(drone_state[1] - desired_pos[1]) < 0.2 and \
-                 np.abs(drone_state[2] - desired_pos[2]) < 0.1):
-                self.controller_state = ControllerStates.normal
+            
+            command.acc.z = float(thrust)
+            command.twist.linear.x = float(pitch_rate)
+            command.twist.linear.y = float(roll_rate)
+            command.twist.linear.z = float(yaw_rate)
+
+            time_condition = time_takeoff > time_spin_motor + time_move_up + time_goto_setpoint
+            position_tolerance = [0.1, 0.1, 0.05]
+            
+            position_differences_values = [np.abs(drone_state[i] - desired_pos[i]) for i in range(3)]
+
+
+            position_differences = [position_differences_values[i] < position_tolerance[i] for i in range(3)]
+
+
+            position_condition = all(position_differences)
+
+            self.node.get_logger().info(f"Position differences values: {position_differences_values}")
+
+            if time_condition or position_condition:
+                self.controller_state = ControllerStates.flight
                 self.last_setpoint = self.setpoint_takeoff
+
+        # command.thrust = self.thrust_newton_to_cmd(command.thrust)
+        # self.node.get_logger().info('Takeoff command: '+str(command.thrust))
         return command
 
+    def thrust_newton_to_cmd(self, thrust):
+        motor_poly = [5.484560e-4, 1.032633e-6, 2.130295e-11]
+        motor_cmd_min = 1000
+        motor_cmd_max = 65000
+        
+        # copied from dfall_pkg/src/nodes/DefaultControllerService.cpp: float computeMotorPolyBackward(float thrust)
+        cmd_16bit = (-motor_poly[1] + np.sqrt(max(0,motor_poly[1]**2 - 4 * motor_poly[2] * (motor_poly[0] - thrust)))) / (2 * motor_poly[2])
+        if cmd_16bit < motor_cmd_min:
+            cmd_16bit = motor_cmd_min
+        elif cmd_16bit > motor_cmd_max:
+            cmd_16bit = motor_cmd_max
+        cmd_16bit = np.ushort(cmd_16bit)
+
+        return float(cmd_16bit)
 
 
-    def landing(self, drone_state):
-        time_landing_max = 2
-        landing_end_height = 0.15
+
+    def landing(self, desired_pos=np.array([0, 0, 0.15])):
+        drone_state = self.drone_state_raw_log[-1]
+
+        time_landing_max = 4
+        landing_end_height = desired_pos[2]
+        landing_spin_motor_cmd = 10000
+
+        command = CommandOuter()
+
         if self.t_landing_start is None:
             self.t_landing_start = self.t
             time_landing = 0
@@ -411,32 +461,34 @@ class Controller():
         if self.setpoint_landing is None:
             self.setpoint_landing = drone_state[:3]
         if drone_state[2] < landing_end_height or time_landing>time_landing_max:
-            landing_spin_motor_cmd = 10000
-            command = CommandOuter()
-            command.thrust = 4*thrust_cmd_to_newton(landing_spin_motor_cmd)
-            command.omega.x = 0
-            command.omega.y = 0
-            command.omega.z = 0
-            self.controller_state = ControllerStates.stop
+            
+            
+            command.thrust = float(4 * thrust_cmd_to_newton(landing_spin_motor_cmd))
+            command.omega.x = float(0)
+            command.omega.y = float(0)
+            command.omega.z = float(0)
+            self.controller_state = ControllerStates.idle
+
         else:
-            desired_pos = self.setpoint_landing.copy()
-            desired_pos[2] = landing_end_height
+            if desired_pos is None:
+                desired_pos = self.setpoint_landing.copy()
+
             desired_pos_limited = self.limit_pos_change(self.setpoint_landing, desired_pos)
-            # self.get_logger().info('limited pos: '+str(desired_pos_limited))
-            # self.get_logger().info('drone state: '+str(drone_state))
+            # self.node.get_logger().info('limited pos: '+str(desired_pos_limited))
+            # self.node.get_logger().info('drone state: '+str(drone_state))
             error_inertial = drone_state.copy()
             error_inertial[0] = drone_state[0] - desired_pos_limited[0]
             error_inertial[1] = drone_state[1] - desired_pos_limited[1]
             error_inertial[2] = drone_state[2] - desired_pos_limited[2]
             self.setpoint_landing = desired_pos_limited
             [thrust, roll_rate, pitch_rate, yaw_rate] = self.compute_setpoint_viaLQR(self.K_star_takeoff, error_inertial, drone_state[8])
-            # self.get_logger().info('action: '+str([thrust, roll_rate, pitch_rate, yaw_rate]))
+            # self.node.get_logger().info('action: '+str([thrust, roll_rate, pitch_rate, yaw_rate]))
             # assign desired values to command as defined in the dfall decoder at the onborad firmware
-            command = CommandOuter()
-            command.thrust = thrust
-            command.omega.x = pitch_rate
-            command.omega.y = roll_rate
-            command.omega.z = yaw_rate
+
+            command.thrust = float(thrust)
+            command.omega.x = float(pitch_rate)
+            command.omega.y = float(roll_rate)
+            command.omega.z = float(yaw_rate)
         return command
 
     def limit_pos_change(self, curr_pos, desired_pos):
@@ -493,7 +545,7 @@ class Controller():
                      disturbance_log=np.array(self.disturbances),
                      default_action_log=np.array(self.default_action_log),
                      optimal_action_log=np.array(self.optimal_action_log))
-        self.get_logger().info("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
+        self.node.get_logger().info("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
 
     def load_data(self, filename):
         try:
@@ -501,7 +553,7 @@ class Controller():
             self.target_state_log = data['target_state_log']
             self.drone_state_algorithm_log = data['drone_state_log']
             self.action_algorithm_log = data['action_log']
-            self.get_logger().info("Load data from" + self.save_path + '/', filename + '.npz')
+            self.node.get_logger().info("Load data from" + self.save_path + '/', filename + '.npz')
             return True
         except:
             return False
@@ -537,7 +589,7 @@ class MotionIndex():
     left = 4
 
 class ControllerStates():
-    normal = 0
+    flight = 0
     takeoff = 1
     landing = 2
-    stop = 3
+    idle = 3
