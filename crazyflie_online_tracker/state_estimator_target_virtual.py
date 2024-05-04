@@ -62,7 +62,7 @@ class TargetStateEstimator(StateEstimator):
         # self.future = self.cli.call_async(self.req)
 
 
-        self.delta_t = 0.01 # model discretion timestep
+        self.delta_t = 0.005 # publis target at 200 Hz, same freq as drone state (mocap) publisher
         # self.delta_t = float(1/f)
         # self.delta_t = 0.0
         self.target = target
@@ -125,7 +125,7 @@ class TargetStateEstimator(StateEstimator):
         self.S_circular = self.S_const_vel.copy()
         if is_sim:
             self.radius = 0.5
-            self.velocity = 0.05
+            self.velocity = 0.15
             self.initial_state_circular = np.array([0.0, 0.0, self.velocity, 0]).reshape([4, 1])
         else:
             self.radius = 0.3
@@ -209,7 +209,7 @@ class TargetStateEstimator(StateEstimator):
         self.delta_t = time_s - self.T_prev
         self.T_prev = time_s
 
-        # self.node.get_logger().info("delta_t: %f" % self.delta_t)
+        self.node.get_logger().info("delta_t: %f" % self.delta_t)
 
         wait_for_drone_ready = self.node.get_parameter('wait_for_drone_ready')
         if wait_for_drone_ready.value == True:
