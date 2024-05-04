@@ -16,6 +16,8 @@ import signal
 from crazyflie_online_tracker_interfaces.srv import DroneStatus
 import time
 from crazyflie_interfaces.msg import FullState
+from crazyflie_interfaces.srv import Land
+from rosgraph_msgs.msg import Clock
 
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
@@ -47,11 +49,20 @@ class DefaultController(Controller):
         self.m = m
 
         self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
-        self.controller_command_pub = self.node.create_publisher(FullState, 'controllerCommand', 10)
+        self.controller_command_pub = self.node.create_publisher(FullState, '/cf231/cmd_vel', 10)
         self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerStateKF', 10)
 
         self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
         self.target_state_sub = self.node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
+
+        self.clock_sub = self.node.create_subscription(Clock, 'clock', self.timer_callback, 10)
+
+        # service clients
+        self.land_cli = self.node.create_client(Land, '/cf231/land')
+        while not self.land_cli.wait_for_service(timeout_sec=1.0):
+            self.node.get_logger().info('service not available, waiting again...')
+        self.req = Land.Request()
+
 
         # self.setpoint_publisher = self.node.create_publisher(Twist, '/cf231/cmd_vel_legacy', 10)
 
@@ -65,8 +76,8 @@ class DefaultController(Controller):
         # get params
         self.filename = self.node.get_parameter('filename')
 
-         # timer calbacks
-        self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
+        #  # timer calbacks
+        # self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
 
         # Set to True to save data for post-processing
         self.save_log = True
@@ -79,6 +90,8 @@ class DefaultController(Controller):
         self.Time = 0        # print(self.backend.time())
         self.Time_T = 0
 
+        self.T_prev = 0.0
+
         signal.signal(signal.SIGINT, self.exit_handler)
 
         # takeoff drone
@@ -86,7 +99,7 @@ class DefaultController(Controller):
         self.hover_position = np.array([0, 0, 0.4])
 
         self.set_to_manual_mode()
-        time.sleep(4)
+        time.sleep(2)
 
         #self.takeoff_autonomous()
         self.takeoff_manual()
@@ -95,10 +108,21 @@ class DefaultController(Controller):
 
         rclpy.spin(self.node)        # print(self.backend.time())
 
+    def send_land_request(self, duration=2, height=0.1):
+        self.req.group_mask = 0
+        self.req.height = height
+        self.req.duration.sec = duration
+        self.req.duration.nanosec = 0
+
+        self.future = self.land_cli.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+        return self.future.result()
+
+
     
     def exit_handler(self, signum, frame):
         print("Sending land command")
-        self.land()
+        self.land_autonomous()
         exit()
 
     def drone_status_callback(self, request, response):
@@ -117,20 +141,26 @@ class DefaultController(Controller):
         position_diff = np.abs([x - pos[0], y - pos[1], z - pos[2]])
         x_diff, y_diff, z_diff = position_diff
 
-        self.node.get_logger().info(f"x: {x_diff}, y: {y_diff}, z: {z_diff}")
+        # self.node.get_logger().info(f"x: {x_diff}, y: {y_diff}, z: {z_diff}")
 
         if np.all(position_diff < np.array([tol_x, tol_y, tol_z])):
             return True
         else:
             return False
 
-    def timer_callback(self):
+    def timer_callback(self, msg):
+
+        self.t = msg.clock.sec  + msg.clock.nanosec / 1e9
+        self.delta_t = self.t - self.T_prev
+        self.T_prev = self.t
+
 
         # self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
         # self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}") 
 
-        self.node.get_logger().info(f"Controller state: {self.controller_state}")
+        # self.node.get_logger().info(f"Controller state: {self.controller_state}")
 
+           
         if len(self.drone_state_raw_log) == 0:
             self.node.get_logger().info('No drone state estimate is available. Skipping.')
             return
@@ -191,14 +221,8 @@ class DefaultController(Controller):
                 self.land_autonomous()
                 self.node.get_logger().info("Landing started")
 
-            
+        # self.node.get_logger().info("Time:, delta_t: " + str(self.t) + ", " + str(self.delta_t))
 
-        self.t += self.delta_t
-        self.node.get_logger().info("Time: " + str(self.t))
-
-    # def go_to_position(self, desired_pos):
-    #     self.compute_setpoint(desired_pos=desired_pos)
-    #     self.track_setpoint()
 
     def set_to_manual_mode(self):
         # Publish empty setpoints to ensure the drone remains stationary
@@ -274,7 +298,7 @@ class DefaultController(Controller):
         self.setpoint = setpoint
         self.controller_command_pub.publish(self.setpoint)
 
-        self.node.get_logger().info("Thrust: " + str(setpoint.acc.z))
+        # self.node.get_logger().info("Thrust: " + str(setpoint.acc.z))
     
 
            
@@ -294,20 +318,6 @@ class DefaultController(Controller):
 
         action = action_rotated # option 2msg.omega.x
         self.action_log.append(action)
-
-        
-        # setpoint = CommandOuter()
-
-        # # setpoint.header.stamp.sec = self.t
-        # setpoint.thrust = float(action[0])
-        # setpoint.omega.x = float(action[1]) # pitch rate
-        # setpoint.omega.y = float(action[2]) # roll rate
-        # setpoint.omega.z = float(action[3]) # yaw rate
-        # # self.node.get_logger().info('error:'+str(action))
-
-        # # # Rescale thrust from (0,0.56) to (0,60000)
-        # thrust_motor = setpoint.thrust/ 4
-        # setpoint.thrust = self.thrust_newton_to_cmd(thrust_motor)
 
         setpoint = FullState()
 
@@ -354,10 +364,9 @@ class DefaultController(Controller):
         self.controller_state = ControllerStates.landing
 
     def land_autonomous(self):
-        self.setpoint = CommandOuter()
-        self.setpoint.is_last_command = True
-        self.controller_command_pub.publish(self.setpoint)
-        self.controller_state = ControllerStates.idle
+        self.controller_state = ControllerStates.landing
+        response = self.send_land_request()
+        self.node.get_logger().info("Landing response: %s" % response)
 
 def main(args=None):
 
