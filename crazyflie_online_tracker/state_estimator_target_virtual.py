@@ -63,6 +63,7 @@ class TargetStateEstimator(StateEstimator):
 
 
         self.delta_t = 0.005 # publis target at 200 Hz, same freq as drone state (mocap) publisher
+        self.i = 0
         # self.delta_t = float(1/f)
         # self.delta_t = 0.0
         self.target = target
@@ -208,12 +209,13 @@ class TargetStateEstimator(StateEstimator):
         time_s = msg.clock.sec  + msg.clock.nanosec / 1e9
         self.delta_t = time_s - self.T_prev
         self.T_prev = time_s
+        # self.node.get_logger().info("delta_t: %f" % self.delta_t)
 
-        self.node.get_logger().info("delta_t: %f" % self.delta_t)
-
-        wait_for_drone_ready = self.node.get_parameter('wait_for_drone_ready')
-        if wait_for_drone_ready.value == True:
-            self.publish_state()
+        self.i += 1
+        if self.i % 5 == 0: # pulish at 200 Hz
+            wait_for_drone_ready = self.node.get_parameter('wait_for_drone_ready')
+            if wait_for_drone_ready.value == True:
+                self.publish_state()
         # else:
         #     self.node.get_logger().info("Waiting for drone ready")
 
@@ -252,7 +254,7 @@ class TargetStateEstimator(StateEstimator):
             marker.action = Marker.ADD
             marker.pose.position.x = self.state.pose.position.x
             marker.pose.position.y = self.state.pose.position.y
-            marker.pose.position.z = self.state.pose.position.z - 0.05
+            marker.pose.position.z = self.state.pose.position.z 
             # marker.pose.orientation.x = self.state.pose.orientation.x
             # marker.pose.orientation.y = self.state.pose.orientation.y
             # marker.pose.orientation.z = self.state.pose.orientation.z
