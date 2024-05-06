@@ -120,6 +120,8 @@ class Controller(Node):
         self.set_to_manual_mode()
         time.sleep(2)
 
+        self.T_duration = T + self.t
+
         # for shutfown, fix later
         # self.create_subscription(Empty, 'shutdown', self.safe_shutdown, 10)
 
@@ -602,7 +604,7 @@ class Controller(Node):
             return
             
         if self.controller_state == ControllerStates.flight:
-            if self.t >= T:
+            if self.t >= self.T_duration:
                 self.get_logger().info('Simulation finished.')
                 self.land()
 
@@ -613,11 +615,11 @@ class Controller(Node):
                     new_filename = self.filename + additional_info
                     self.save_data(new_filename) # save log data to file for evaluation
 
-                    # if self.plot:
-                    #     self.get_logger().info('Printing the figures')
-                    #     os.system("python3 ../crazyflie_online_tracker/plot_mine.py")
+                    if self.plot:
+                        self.get_logger().info('Printing the figures')
+                        os.system("python3 ../crazyflie_online_tracker/plot.py")
 
-                # exit()
+                    exit()
 
 
             elif self.drone_ready == False:
@@ -688,7 +690,7 @@ class Controller(Node):
         action_rotated = np.array([thrust, pitch_rate, roll_rate, yaw_rate])
 
         action = action_rotated # option 2msg.omega.x
-        self.action_log.append(action)
+        # self.action_log.append(action)
 
         setpoint = FullState()
 
@@ -774,10 +776,6 @@ class Controller(Node):
         rclpy.spin_until_future_complete(self, self.future)
         return self.future.result()
 
-
-
-   
-    
 
     def save_data(self, filename):
         now = datetime.now()
