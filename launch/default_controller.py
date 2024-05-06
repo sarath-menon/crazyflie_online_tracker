@@ -8,19 +8,13 @@ import time
 
 def generate_launch_description():
 
-    # sim_node = Node(
-    #     package='crazyflie_online_tracker',
-    #     executable='linear_simulator',
-    #     name='linear_simulator',003] [controller_default]: Trajectory data has been saved to/home/sarath/drones/catkin_ws/src/crazyflie_online_tracker/data/20240501135751_RLS_circular_target_T50_f50_mode0.npz
-    # ) 
-
     controller_node =  Node(
             package='crazyflie_online_tracker',
             executable='controller_default',
             name='controller_default',
             parameters=[{
+                'clock_frequency': LaunchConfiguration('clock_frequency'),
                 'filename': LaunchConfiguration('filename'),
-                'wait_for_drone_ready': LaunchConfiguration('wait_for_drone_ready')
             }]
     )
 
@@ -37,6 +31,11 @@ def generate_launch_description():
 
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'clock_frequency',
+            default_value='1000.0',
+            description='Clock frequency'
+        ),
         DeclareLaunchArgument(
             'filename',
             default_value='RLS',

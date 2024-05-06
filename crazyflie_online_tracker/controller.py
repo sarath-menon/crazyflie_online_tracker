@@ -104,9 +104,15 @@ class Controller():
 
          # declare params
         self.node.declare_parameter('filename', 'Filename')
+        self.node.declare_parameter('clock_frequency', 1000.0)
 
         # get params
-        self.filename = self.node.get_parameter('filename')
+        self.filename = self.node.get_parameter('filename').value
+        self.clock_frequency = self.node.get_parameter('clock_frequency').value
+
+        self.callback_wait = self.clock_frequency / f
+        self.i = 0
+        self.node.get_logger().info(f"callback_wait: {self.callback_wait}")
 
         # crazyflie sim time
         self.t = 0
@@ -204,7 +210,7 @@ class Controller():
     @abstractmethod
     def compute_setpoint(self):
         pass
-    
+
     def callback_state_drone(self, data):
         # self.node.get_logger().info('Received drone state.')
 
@@ -588,6 +594,8 @@ class Controller():
         self.t = msg.clock.sec  + msg.clock.nanosec / 1e9
         self.delta_t = self.t - self.T_prev
         self.T_prev = self.t
+        # self.node.get_logger().info(f"Time: {self.delta_t}")
+        self.i += 1
 
 
         # self.node.get_logger().info(f"Length of drone state log: {len(self.drone_state_raw_log)}")
@@ -595,7 +603,10 @@ class Controller():
 
         # self.node.get_logger().info(f"Controller state: {self.controller_state}")
 
-           
+        if self.i % self.callback_wait != 0:
+            return
+
+
         if len(self.drone_state_raw_log) == 0:
             self.node.get_logger().info('No drone state estimate is available. Skipping.')
             return
@@ -609,7 +620,7 @@ class Controller():
                     additional_info = f"_{target}_T{T}_f{f}_mode{mode}"
                     if filtering:
                         additional_info = f"_{target}_T{T}_f{f}_mode{mode}_Filtered"
-                    new_filename = self.filename.value + additional_info
+                    new_filename = self.filename + additional_info
                     self.save_data(new_filename) # save log data to file for evaluation
 
                     # if self.plot:
