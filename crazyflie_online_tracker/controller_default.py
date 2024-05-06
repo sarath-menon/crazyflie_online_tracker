@@ -108,14 +108,14 @@ class DefaultController(Controller):
 
         rclpy.spin(self.node)        # print(self.backend.time())
 
-    def send_land_request(self, duration=2, height=0.1):
+    def send_land_request(self, duration=6, height=0.15):
         self.req.group_mask = 0
         self.req.height = height
         self.req.duration.sec = duration
         self.req.duration.nanosec = 0
 
         self.future = self.land_cli.call_async(self.req)
-        rclpy.spin_until_future_complete(self, self.future)
+        rclpy.spin_until_future_complete(self.node, self.future)
         return self.future.result()
 
 
@@ -187,7 +187,7 @@ class DefaultController(Controller):
             elif self.drone_ready == False:
                 if self.check_drone_at_position(pos=self.hover_position ) == False:
                     self.go_to_position(self.hover_position )
-                    self.node.get_logger().info("Going to initial position")
+                    self.node.get_logger().info("Going to hover position")
                 else:
                     self.drone_ready = True
                     os.system("ros2 param set /state_estimator_target_virtual wait_for_drone_ready True")
@@ -367,6 +367,7 @@ class DefaultController(Controller):
         self.controller_state = ControllerStates.landing
         response = self.send_land_request()
         self.node.get_logger().info("Landing response: %s" % response)
+        # self.controller_state = ControllerStates.idle
 
 def main(args=None):
 
