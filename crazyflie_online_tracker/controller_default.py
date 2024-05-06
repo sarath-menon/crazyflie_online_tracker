@@ -44,7 +44,6 @@ class DefaultController(Controller):
         self.initial_position = np.array([0, 0, 0])
         self.hover_position = np.array([0, 0, 0.4])
 
-        #self.takeoff_autonomous()
         self.takeoff_manual()
 
         rclpy.spin(self.node)        # print(self.backend.time())
