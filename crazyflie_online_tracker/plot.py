@@ -1240,16 +1240,17 @@ if __name__ == '__main__':
 
     sampling_interval = 100
 
-    # Get the list of available experiments
-    list_of_experiments = glob.glob(save_path + '/*')
-    latest_experiment = max(list_of_experiments, key=os.path.getctime)
-    latest_experiment = latest_experiment.replace(save_path + '/','')
-    latest_experiment = latest_experiment.replace('.npz','')
+    
 
     # Load Data
     if len(sys.argv) > 1:
         algorithm_filenames = sys.argv[1:]
     else:
+        # Get the list of available experiments
+        list_of_experiments = glob.glob(save_path + '/*')
+        latest_experiment = max(list_of_experiments, key=os.path.getctime)
+        latest_experiment = latest_experiment.replace(save_path + '/','')
+        # latest_experiment = latest_experiment.replace('.npz','')
         algorithm_filenames = [latest_experiment]
 
     alg_names = []
@@ -1260,7 +1261,7 @@ if __name__ == '__main__':
         alg_full_names.append(name)
 
     # The extracted algorithm data
-    algorithm_logs = [load_data(file+'.npz') for file in algorithm_filenames]
+    algorithm_logs = [load_data(file) for file in algorithm_filenames]
 
     #  Initialization
     drone_state_log, target_state_log, action_log, action_DF_log, disturbances_log, cost_log, error_log = [], [], [], [], [], [], []
@@ -1315,7 +1316,7 @@ if __name__ == '__main__':
         #plotter.plot_regret(action_DF_log, disturbances_log, name=alg_full_names)
 
         # Create a Video
-        plotter.create_video(drone_state_log, target_state_log, save_img=True, name = alg_names[idx])
+        #plotter.create_video(drone_state_log, target_state_log, save_img=True, name = alg_names[idx])
 
         # plotter.create_video_vertical(drone_state_log, target_state_log, save_img=False, name=alg_names[idx])
 
