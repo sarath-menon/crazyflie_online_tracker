@@ -844,11 +844,13 @@ class Plotter():
         Plot the Trajectory in the x-y plane
         '''
         fig, ax = plt.subplots(figsize=(6, 6.5))
-        # Choose the length of the video in Timesteps
-        length = 90
+
+        # # Choose the length of the video in Timesteps
+        # length = 2000
         for state in drone_state_log:
             if len(state) > 0:
                 length = int(min(length, len(state)))
+
         # length = 500
         legends = []
         for _, n in enumerate(name):
@@ -1236,6 +1238,8 @@ if __name__ == '__main__':
 
     args = sys.argv
 
+    sampling_interval = 100
+
     # Get the list of available experiments
     list_of_experiments = glob.glob(save_path + '/*')
     latest_experiment = max(list_of_experiments, key=os.path.getctime)
@@ -1272,13 +1276,16 @@ if __name__ == '__main__':
         # order of logs in load_data:
         # target_state_log 0, drone_state_log 1, action_log 2, action_DF_log 3,
         # disturbance_log 4, default_action_log 5, optimal_action_log 6
-        target = log[0]
-        drone = log[1] # will be filtered drone state if filtered = True in controller_default
-        action = log[2]
-        action_DF = log[3]
-        disturbances = log[4]
-        default_action = log[5]
-        optimal_action = log[6]
+        
+        
+        target = log[0][::sampling_interval]
+        drone = log[1][::sampling_interval] # will be filtered drone state if filtered = True in controller_default
+        action = log[2][::sampling_interval]
+        action_DF = log[3][::sampling_interval]
+        disturbances = log[4][::sampling_interval]
+        default_action = log[5][::sampling_interval]
+        optimal_action = log[6][::sampling_interval]
+
         try:
             S_log = log[7]
         except:
@@ -1293,20 +1300,22 @@ if __name__ == '__main__':
         cost_log.append(cost)
         error_log.append(error)
 
-        # State Plot
-        # plotter.plot_state([drone, target], alg_names[idx] + '_states')
+        
 
-        # Control Input Plot
+        # State Plot
+        plotter.plot_state([drone, target], alg_names[idx] + '_states')
+
+        # #Control Input Plot
         # plotter.plot_action([action, default_action, optimal_action], alg_names[idx]+'_inputs')
 
         # Phase plot
         plotter.plot_trajectory(drone_state_log, target_state_log,name=alg_names[idx])
 
         # Regret Plot
-        # plotter.plot_regret(action_DF_log, disturbances_log, name=alg_full_names)
+        #plotter.plot_regret(action_DF_log, disturbances_log, name=alg_full_names)
 
         # Create a Video
-        # plotter.create_video(drone_state_log, target_state_log, save_img=True, name = alg_names[idx])
+        plotter.create_video(drone_state_log, target_state_log, save_img=True, name = alg_names[idx])
 
         # plotter.create_video_vertical(drone_state_log, target_state_log, save_img=False, name=alg_names[idx])
 
