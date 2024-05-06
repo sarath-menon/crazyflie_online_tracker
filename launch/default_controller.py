@@ -23,7 +23,8 @@ def generate_launch_description():
             executable='state_estimator_target_virtual',
             name='state_estimator_target_virtual',
             parameters=[{
-                'wait_for_drone_ready': LaunchConfiguration('wait_for_drone_ready')
+                'wait_for_drone_ready': LaunchConfiguration('wait_for_drone_ready'),
+                'clock_frequency': LaunchConfiguration('clock_frequency'),
             }]
     )
 
