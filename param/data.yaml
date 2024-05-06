@@ -1,6 +1,7 @@
 # Parameters
-f: 50
-T: 100
+f: 500 # controller freq
+f_target: 200 # target freq
+T: 50
 W_RLS: 5
 gamma_RLS: 0.8
 is_sim: True

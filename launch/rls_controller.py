@@ -7,21 +7,14 @@ from launch.event_handlers import OnProcessStart
 
 def generate_launch_description():
 
-    # sim_node = Node(
-    #     package='crazyflie_online_tracker',
-    #     executable='linear_simulator',
-    #     name='linear_simulator',
-    # ) 
-
     controller_node =  Node(
             package='crazyflie_online_tracker',
             executable='controller_RLS',
             name='controller_RLS',
             parameters=[{
-                'publish_frequency': LaunchConfiguration('publish_frequency'),
-                'add_initial_target': LaunchConfiguration('add_initial_target'),
+                'filename': LaunchConfiguration('filename'),
+                'clock_frequency': LaunchConfiguration('clock_frequency'),
                 'synchronize_target': LaunchConfiguration('synchronize_target'),
-                'filename': LaunchConfiguration('filename')
             }]
     )
 
@@ -29,6 +22,10 @@ def generate_launch_description():
             package='crazyflie_online_tracker',
             executable='state_estimator_target_virtual',
             name='state_estimator_target_virtual',
+             parameters=[{
+                'wait_for_drone_ready': LaunchConfiguration('wait_for_drone_ready'),
+                'clock_frequency': LaunchConfiguration('clock_frequency'),
+            }]
     )
 
     
@@ -41,9 +38,9 @@ def generate_launch_description():
             description='Publish frequency'
         ),
         DeclareLaunchArgument(
-            'add_initial_target',
-            default_value='false',
-            description='Add initial target'
+            'clock_frequency',
+            default_value='1000.0',
+            description='Clock frequency'
         ),
         DeclareLaunchArgument(
             'synchronize_target',
@@ -55,6 +52,12 @@ def generate_launch_description():
             default_value='RLS',
             description='Filename'
         ),
+        DeclareLaunchArgument(
+            'wait_for_drone_ready',
+            default_value='False',
+            description='Wait for drone ready'
+        ),
+        
         
        controller_node, 
 

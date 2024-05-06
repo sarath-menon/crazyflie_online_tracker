@@ -12,6 +12,7 @@ from crazyflie_online_tracker_interfaces.msg import TargetState
 from crazyflie_online_tracker_interfaces.srv import PublishSingleTarget
 from crazyflie_online_tracker_interfaces.srv import DroneStatus
 from visualization_msgs.msg import Marker
+from rosgraph_msgs.msg import Clock
 from .state_estimator import StateEstimator, MotionIndex
 import std_msgs.msg
 import time
@@ -34,6 +35,7 @@ add_noise = data['add_noise']
 target = data['target']
 mode = data['mode']
 filtering = data['filtering']
+f_target = data['f_target']
 
 
 class TargetStateEstimator(StateEstimator):
@@ -51,26 +53,25 @@ class TargetStateEstimator(StateEstimator):
         self.state_pub = self.node.create_publisher(TargetState, 'targetState', 10)
         self.service = self.node.create_service(PublishSingleTarget, '/publish_single_target', self.handle_publish_single_target)
         self.target_marker_pub = self.node.create_publisher(Marker, '/target_marker', 10)
+        self.clock_sub = self.node.create_subscription(Clock, 'clock', self.timer_callback, 10)
 
-        # # service client
-        # self.cli = self.node.create_client(DroneStatus, 'drone_status')
-        # while not self.cli.wait_for_service(timeout_sec=1.0):
-        #     self.node.get_logger().info('service not available, waiting again...')
-        # self.req = DroneStatus.Request()
-        # self.future = self.cli.call_async(self.req)
-
-
-        # self.delta_t = 0.1 # model discretion timestep
-        self.delta_t = float(1/f)
+        self.delta_t = 1 / f_target 
+        self.i = 0
         self.target = target
+
+        self.T_prev = 0.0
 
         # declare params
         self.node.declare_parameter('wait_for_drone_ready', False)
+        self.node.declare_parameter('clock_frequency', 1000.0)
 
-        # self.wait_for_drone_ready = False
+        # get params
+        self.clock_frequency = self.node.get_parameter('clock_frequency').value
 
-         # timer callbacks
-        self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
+        self.callback_wait = self.clock_frequency / f_target
+
+        #  # timer callbacks
+        # self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
 
         if compl == 'sqrt':
             self.compl = np.sqrt(T*f)
@@ -120,7 +121,7 @@ class TargetStateEstimator(StateEstimator):
         self.S_circular = self.S_const_vel.copy()
         if is_sim:
             self.radius = 0.5
-            self.velocity = 0.05
+            self.velocity = 0.15
             self.initial_state_circular = np.array([0.0, 0.0, self.velocity, 0]).reshape([4, 1])
         else:
             self.radius = 0.3
@@ -199,12 +200,21 @@ class TargetStateEstimator(StateEstimator):
     #         self.wait_for_drone_ready = response.is_drone_ready
     #         self.node.get_logger().info("is drone ready client: %d" % response.is_drone_ready)
 
-    def timer_callback(self):
+    def timer_callback(self, msg):
+        time_s = msg.clock.sec  + msg.clock.nanosec / 1e9
+        self.delta_t = time_s - self.T_prev
+        self.T_prev = time_s
+        self.i += 1
+        # self.node.get_logger().info("delta_t: %f" % self.delta_t)
+
+        if self.i % self.callback_wait != 0:
+            return
+
         wait_for_drone_ready = self.node.get_parameter('wait_for_drone_ready')
         if wait_for_drone_ready.value == True:
             self.publish_state()
         # else:
-        #     self.node.get_logger().info("Waiting for drone ready")
+            #     self.node.get_logger().info("Waiting for drone ready")
 
     def publish_state(self):
         if target == 'stationary_target':
@@ -241,14 +251,14 @@ class TargetStateEstimator(StateEstimator):
             marker.action = Marker.ADD
             marker.pose.position.x = self.state.pose.position.x
             marker.pose.position.y = self.state.pose.position.y
-            marker.pose.position.z = self.state.pose.position.z - 0.05
+            marker.pose.position.z = self.state.pose.position.z 
             # marker.pose.orientation.x = self.state.pose.orientation.x
             # marker.pose.orientation.y = self.state.pose.orientation.y
             # marker.pose.orientation.z = self.state.pose.orientation.z
             # marker.pose.orientation.w = self.state.pose.orientation.w
-            marker.scale.x = 0.1
-            marker.scale.y = 0.1
-            marker.scale.z = 0.1
+            marker.scale.x = 0.05
+            marker.scale.y = 0.05
+            marker.scale.z = 0.05
             marker.color.a = 1.0
             marker.color.r = 0.0
             marker.color.g = 0.0
