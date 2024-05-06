@@ -108,7 +108,7 @@ class DefaultController(Controller):
 
         rclpy.spin(self.node)        # print(self.backend.time())
 
-    def send_land_request(self, duration=6, height=0.15):
+    def send_land_request(self, duration=2, height=0.15):
         self.req.group_mask = 0
         self.req.height = height
         self.req.duration.sec = duration
