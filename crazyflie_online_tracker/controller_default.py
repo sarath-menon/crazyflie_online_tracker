@@ -10,14 +10,7 @@ from scipy import linalg
 from crazyflie_online_tracker_interfaces.msg import CommandOuter
 from .controller import Controller, ControllerStates
 from datetime import datetime
-from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
-from geometry_msgs.msg import Twist
-import signal
-from crazyflie_online_tracker_interfaces.srv import DroneStatus
-import time
 from crazyflie_interfaces.msg import FullState
-from crazyflie_interfaces.srv import Land
-from rosgraph_msgs.msg import Clock
 
 # Load data from the YAML file
 yaml_path = os.path.join(os.path.dirname(__file__), '../param/data.yaml')
@@ -41,74 +34,20 @@ class DefaultController(Controller):
     def __init__(self):
         super().__init__()
 
-        rclpy.init()
-        self.node = rclpy.create_node("DefaultController")
-
-        self.m = m
-
-        self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
-        self.controller_command_pub = self.node.create_publisher(FullState, '/cf231/cmd_vel', 10)
-        self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerStateKF', 10)
-
-        self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
-        self.target_state_sub = self.node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
-
-        self.clock_sub = self.node.create_subscription(Clock, 'clock', self.timer_callback, 10)
-
-        # service clients
-        self.land_cli = self.node.create_client(Land, '/cf231/land')
-        while not self.land_cli.wait_for_service(timeout_sec=1.0):
-            self.node.get_logger().info('service not available, waiting again...')
-        self.req = Land.Request()
-
-
-        # self.setpoint_publisher = self.node.create_publisher(Twist, '/cf231/cmd_vel_legacy', 10)
-
-         # declare params
-        self.node.declare_parameter('filename', 'Filename')
-        self.node.declare_parameter('wait_for_drone_ready', False)
-
-        # # services
-        # self.srv = self.node.create_service(DroneStatus, 'drone_status', self.drone_status_callback)
-
-        # get params
-        self.filename = self.node.get_parameter('filename')
-
-        #  # timer calbacks
-        # self.timer = self.node.create_timer(self.delta_t, self.timer_callback)
-
         # Set to True to save data for post-processing
         self.save_log = True
 
         # Set to True to generate a plot immediately
         self.plot = True
 
-
-        # for timing in algorithms
-        self.Time = 0        # print(self.backend.time())
-        self.Time_T = 0
-
-        self.T_prev = 0.0
-
-        signal.signal(signal.SIGINT, self.exit_handler)
-
         # takeoff drone
         self.initial_position = np.array([0, 0, 0])
         self.hover_position = np.array([0, 0, 0.4])
 
-        self.set_to_manual_mode()
-        time.sleep(2)
-
         #self.takeoff_autonomous()
         self.takeoff_manual()
 
-        self.drone_ready = False
-
         rclpy.spin(self.node)        # print(self.backend.time())
-
-    
-    
-    
 
            
 

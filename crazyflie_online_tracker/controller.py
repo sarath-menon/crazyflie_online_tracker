@@ -13,8 +13,15 @@ import yaml
 import queue
 from crazyflie_interfaces.msg import FullState
 import time
-
 from crazyflie_online_tracker_interfaces.msg import ControllerState, CommandOuter, CrazyflieState, TargetState
+from geometry_msgs.msg import Twist
+import signal
+from crazyflie_online_tracker_interfaces.srv import DroneStatus
+import time
+from crazyflie_interfaces.msg import FullState
+from crazyflie_interfaces.srv import Land
+from rosgraph_msgs.msg import Clock
+
 
 # copied from dfall package, for taking off and landing
 motor_poly = [5.484560e-4, 1.032633e-6, 2.130295e-11]
@@ -62,30 +69,74 @@ class Controller():
         self.g = g
         self.m = m
 
-        # ROS node
-        self.node = None
+        # # ROS node
+        # self.node = None
 
         # INITIALIZATION OF CONTROLLER STATE
         self.controller_state = ControllerStates.idle
 
-        self.controller_state_sub = None
-        self.controller_command_pub = None
-        self.controller_state_pub = None
+        # self.controller_state_sub = None
+        # self.controller_command_pub = None
+        # self.controller_state_pub = None
 
-        self.drone_state_sub = None
-        self.target_state_sub = None
+        # self.drone_state_sub = None
+        # self.target_state_sub = None
+
+        rclpy.init()
+        self.node = rclpy.create_node("DefaultController")
+
+        self.m = m
+
+        self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
+        self.controller_command_pub = self.node.create_publisher(FullState, '/cf231/cmd_vel', 10)
+        self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerStateKF', 10)
+
+        self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
+        self.target_state_sub = self.node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
+
+        self.clock_sub = self.node.create_subscription(Clock, 'clock', self.timer_callback, 10)
+
+        # service clients
+        self.land_cli = self.node.create_client(Land, '/cf231/land')
+        while not self.land_cli.wait_for_service(timeout_sec=1.0):
+            self.node.get_logger().info('service not available, waiting again...')
+        self.req = Land.Request()
+
+         # declare params
+        self.node.declare_parameter('filename', 'Filename')
+
+        # get params
+        self.filename = self.node.get_parameter('filename')
+
+        # crazyflie sim time
+        self.t = 0
+
+        # for timing in algorithms
+        self.Time = 0        # print(self.backend.time())
+        self.Time_T = 0
+
+        # to compute delta_t
+        self.T_prev = 0.0
+
+        # drone becomes ready when it reaches hover position
+        self.drone_ready = False
+
+        self.set_to_manual_mode()
+        time.sleep(2)
 
         # for shutfown, fix later
         # self.create_subscription(Empty, 'shutdown', self.safe_shutdown, 10)
 
 
-        self.t = 0  
+        
         self.takeoff_phase = 0 # 0 for unstarted, 1 for spin motor, 2 for moving up, 3 for goto setpoint
         self.setpoint_takeoff = None # record the position where the drone starts to take off
         self.setpoint_landing = None # record the position where the drone starts to land
         self.last_setpoint = None
         self.t_takeoff_start = None
         self.t_landing_start = None
+
+        signal.signal(signal.SIGINT, self.exit_handler)
 
         # linear dynamic model: x_{t+1} = Ax_t + Bu_t
         # x = [x,y,z,vx,vy,vz,roll,pitch,yaw]
@@ -153,11 +204,7 @@ class Controller():
     @abstractmethod
     def compute_setpoint(self):
         pass
-
-    @abstractmethod
-    def publish_setpoint(self):
-        pass
-
+    
     def callback_state_drone(self, data):
         # self.node.get_logger().info('Received drone state.')
 
