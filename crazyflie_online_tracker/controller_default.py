@@ -46,7 +46,7 @@ class DefaultController(Controller):
 
         self.takeoff_manual()
 
-        rclpy.spin(self.node)        # print(self.backend.time())
+        rclpy.spin(self)        # print(self.backend.time())
 
            
 

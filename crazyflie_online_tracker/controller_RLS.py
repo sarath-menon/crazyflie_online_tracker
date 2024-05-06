@@ -75,14 +75,14 @@ class RLSController(Controller):
         self.solve_M_optimal_all()
 
          # declare params
-        # self.node.declare_parameter('add_initial_target', False)
-        self.node.declare_parameter('synchronize_target', False)
-        # self.node.declare_parameter('filename', 'Filename')
+        # self.declare_parameter('add_initial_target', False)
+        self.declare_parameter('synchronize_target', False)
+        # self.declare_parameter('filename', 'Filename')
 
         # get params
-        # self.add_initial_target = self.node.get_parameter('add_initial_target')
-        self.add_initial_target = self.node.get_parameter('synchronize_target')
-        # self.add_initial_target = self.node.get_parameter('filename')
+        # self.add_initial_target = self.get_parameter('add_initial_target')
+        self.add_initial_target = self.get_parameter('synchronize_target')
+        # self.add_initial_target = self.get_parameter('filename')
 
 
         # Set to True to save data for post-processing
@@ -97,7 +97,7 @@ class RLSController(Controller):
 
         self.takeoff_manual()
         
-        rclpy.spin(self.node)
+        rclpy.spin(self)
     
 
     def compute_setpoint(self):
@@ -118,8 +118,8 @@ class RLSController(Controller):
 
         for i in range(self.W):
             future_disturbance_feedback -= self.M_optimal_all[i]@self.disturbances_predicted[i]
-            # self.node.get_logger().info('future_disturbance '+str(i)+ ' : '+str(self.disturbances_predicted[i]))
-            # self.node.get_logger().info('future_disturbance_feedback '+str(i)+ ' : '+str(self.M_optimal_all[i]@self.disturbances_predicted[i]))
+            # self.get_logger().info('future_disturbance '+str(i)+ ' : '+str(self.disturbances_predicted[i]))
+            # self.get_logger().info('future_disturbance_feedback '+str(i)+ ' : '+str(self.M_optimal_all[i]@self.disturbances_predicted[i]))
         
         roll_rate = future_disturbance_feedback[1].copy()
         pitch_rate = future_disturbance_feedback[2].copy()
@@ -133,7 +133,7 @@ class RLSController(Controller):
         self.action_log.append(action)
 
 
-        # self.node.get_logger().info('optimal action[RLS]: '+str(action))
+        # self.get_logger().info('optimal action[RLS]: '+str(action))
         # convert command from numpy array to ros message
         setpoint = FullState()
 
@@ -151,7 +151,7 @@ class RLSController(Controller):
         drone_state = self.drone_state_raw_log[-1]
         target_state = self.target_state_raw_log[-1]
 
-        if self.node.get_parameter('synchronize_target').get_parameter_value().bool_value:
+        if self.get_parameter('synchronize_target').get_parameter_value().bool_value:
             # this block of code somehow helps to compensate for the differences of the ros node initialization times
             # e.g. for SOME horizon lengths, the target states used for estimation is [0.3,0.6,0.9,...], while for others it is [0.3,0.3,0.6,0.9,...]
             # this impacts the regret comparison of controllers with different W tracking the same target
@@ -162,8 +162,8 @@ class RLSController(Controller):
         self.drone_state_log.append(drone_state)
         self.target_state_log.append(target_state)
 
-        # self.node.get_logger().info("current state[RLS]: " + str(drone_state))
-        # self.node.get_logger().info("observe target[RLS]:" + str(target_state))
+        # self.get_logger().info("current state[RLS]: " + str(drone_state))
+        # self.get_logger().info("observe target[RLS]:" + str(target_state))
 
         # compute disturbance w_t according to the latest drone and target state estimation
         if len(self.target_state_log) < 2:
@@ -181,8 +181,8 @@ class RLSController(Controller):
             if len(self.pred_log) >= k:
                 pred_state = self.pred_log[-k][k - 1]
                 error[k - 1] = pred_state - target_state[self.idx_of_interest]
-                # self.node.get_logger().info('predicted target based on r_{t-' + str(k)+'}: '+str(pred_state))
-        # self.node.get_logger().info('prediction error: '+str(error))
+                # self.get_logger().info('predicted target based on r_{t-' + str(k)+'}: '+str(pred_state))
+        # self.get_logger().info('prediction error: '+str(error))
         self.error_log.append(error)
 
     def RLS_update(self):
