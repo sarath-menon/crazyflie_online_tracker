@@ -48,22 +48,6 @@ class RLSController(Controller):
     def __init__(self):
         super().__init__()
 
-        # self.controller_state_sub = self.node.create_subscription(ControllerState, 'controllerState', self.callback_controller_state, 10)
-        # self.controller_command_pub = self.node.create_publisher(FullState, '/cf231/cmd_vel', 10)
-        # self.controller_state_pub = self.node.create_publisher(ControllerState, 'controllerStateKF', 10)
-
-        # self.drone_state_sub = self.node.create_subscription(CrazyflieState, 'crazyflieState', self.callback_state_drone, 10)
-        # self.target_state_sub = self.node.create_subscription(TargetState, 'targetState', self.callback_state_target, 10)
-
-        # self.clock_sub = self.node.create_subscription(Clock, 'clock', self.timer_callback, 10)
-
-        # # declare params
-        # self.node.declare_parameter('filename', 'Filename')
-        # self.node.declare_parameter('wait_for_drone_ready', False)
-
-        # # get params
-        # self.filename = self.node.get_parameter('filename')
-
         # YAML params
         self.m = m
         self.gamma = gamma # forgetting factor
@@ -90,11 +74,6 @@ class RLSController(Controller):
         self.compute_A_tilde_power()
         self.solve_M_optimal_all()
 
-        # # initialize target position in case it is not detected by the camera.
-        # self.desired_pos = np.array([0, 0.65, 0.3])
-
-        # self.disturbances_predicted = []
-
          # declare params
         # self.node.declare_parameter('add_initial_target', False)
         self.node.declare_parameter('synchronize_target', False)
@@ -105,9 +84,6 @@ class RLSController(Controller):
         self.add_initial_target = self.node.get_parameter('synchronize_target')
         # self.add_initial_target = self.node.get_parameter('filename')
 
-        # # timer calbacks
-        # timer_period = 0.5  # seconds
-        # self.timer = self.node.create_timer(timer_period, self.timer_callback)
 
         # Set to True to save data for post-processing
         self.save_log = True
@@ -122,61 +98,6 @@ class RLSController(Controller):
         self.takeoff_manual()
         
         rclpy.spin(self.node)
-        # node.destroy_node()
-        # rclpy.shutdown()
-
-    # def timer_callback(self):
-
-    #     if self.controller_state != ControllerStates.stop:
-    #         ready = False
-
-    #         self.node.get_logger().info(f"Length of drone state log: {self.drone_state_raw_log.qsize()}")
-    #         self.node.get_logger().info(f"Length of target state log: {len(self.target_state_raw_log)}")
-
-    #         # Check if initial target is to be added and if the target state log is empty
-    #         if self.add_initial_target and len(self.target_state_raw_log)==0:
-    #             initial_target = np.zeros((9, 1))
-    #             initial_target[:3] = self.desired_pos.reshape((3, 1))
-    #             self.target_state_raw_log.append(initial_target)
-
-    #         # Check if both drone state log and target state log are not empty
-    #         if self.drone_state_raw_log.qsize()>0 and \
-    #             len(self.target_state_raw_log)>0:
-    #             ready = True
-                
-    #         # Check if current time is less than or equal to T
-    #         if self.t <= T:
-    #             if ready:
-    #                 # Check if the controller state is normal
-    #                 if self.controller_state == ControllerStates.normal:
-    #                     self.get_new_states()
-    #                     self.RLS_update()
-    #                 self.publish_setpoint()
-    #                 self.t += self.delta_t
-
-    #             else:
-    #                 self.node.get_logger().info('No drone or target state estimation is available. Skipping.')
-    #         else:
-    #             # Check if the controller state is normal
-    #             if self.controller_state == ControllerStates.normal:
-    #                 self.publish_setpoint(is_last_command=True)
-    #                 self.node.get_logger().info('Simulation finished.')
-    #             else:
-    #                 self.publish_setpoint()
-
-
-    #     elif self.controller_state == ControllerStates.stop:
-    #         self.node.get_logger().info('controller state is set to STOP. Terminating.')
-    #         if self.save_log:
-    #             filename = self.node.get_parameter('filename')
-    #             additional_info = f"_{target}_T{T}_f{f}_gam{round(self.gamma,2)}_W{W}_mode{mode}"
-    #             new_filename = filename.get_parameter_value().string_value + additional_info
-    #             self.save_data(new_filename)
-    #             time.sleep(2)
-    #             if self.plot:
-    #                os.system("ros2 run crazyflie_online_tracker plot.py")
-
-
     
 
     def compute_setpoint(self):
@@ -240,7 +161,7 @@ class RLSController(Controller):
                 target_state = self.target_state_raw_log[-1]
         self.drone_state_log.append(drone_state)
         self.target_state_log.append(target_state)
-        self.node.get_logger().info("current time: " + str(self.t))
+
         # self.node.get_logger().info("current state[RLS]: " + str(drone_state))
         # self.node.get_logger().info("observe target[RLS]:" + str(target_state))
 
@@ -334,54 +255,8 @@ class RLSController(Controller):
         M_projected = U @ linalg.diagsvd(s, 7, 7) @ Vh
         return M_projected
 
-        self.setpoint = setpoint
-
-    # def save_data(self, filename):
-    #     now = datetime.now()
-    #     timestr = now.strftime("%Y%m%d%H%M%S")
-    #     filename = timestr + '_' + filename
-    #     # depending on filtering the drone_state_log will be populated from the filtered raw log or from
-    #     # the unfiltered one
-    #     if filtering: # if we are in the simulation we need to save the generated system output
-    #         if is_sim:
-    #             np.savez(os.path.join(self.save_path, filename),
-    #                     target_state_log = np.array(self.target_state_log),
-    #                     drone_state_log= np.array(self.drone_state_log),
-    #                     action_log = np.array(self.action_log),
-    #                     action_DF_log = np.array(self.action_DF_log),
-    #                     disturbance_log = np.array(self.disturbances),
-    #                     default_action_log = np.array(self.default_action_log),
-    #                     optimal_action_log = np.array(self.optimal_action_log),
-    #                     filtered_drone_state_log = np.array(self.filtered_drone_state_log),
-    #                     system_output=np.array(self.system_output_raw_log))
-    #         else:
-    #             np.savez(os.path.join(self.save_path, filename),
-    #                      target_state_log=np.array(self.target_state_log),
-    #                      drone_state_log=np.array(self.drone_state_log),
-    #                      action_log=np.array(self.action_log),
-    #                      action_DF_log=np.array(self.action_DF_log),
-    #                      disturbance_log=np.array(self.disturbances),
-    #                      default_action_log=np.array(self.default_action_log),
-    #                      optimal_action_log=np.array(self.optimal_action_log),
-    #                      filtered_drone_state_log=np.array(self.filtered_drone_state_log))
-    #     else:
-    #         np.savez(os.path.join(self.save_path, filename),
-    #                  target_state_log=np.array(self.target_state_log),
-    #                  drone_state_log=np.array(self.drone_state_log),
-    #                  action_log=np.array(self.action_log),
-    #                  action_DF_log=np.array(self.action_DF_log),
-    #                  disturbance_log=np.array(self.disturbances),
-    #                  default_action_log=np.array(self.default_action_log),
-    #                  optimal_action_log=np.array(self.optimal_action_log),
-    #                  learnt_S_log = np.array(self.S_target_aug_all))
-    #     self.node.get_logger().info("Trajectory data has been saved to" + self.save_path + '/' + filename + '.npz')
-
 def main(args=None):
     controller = RLSController()
-
-
-   
-
 
 
 if __name__ == '__main__':
