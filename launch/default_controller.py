@@ -39,7 +39,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'filename',
-            default_value='RLS',
+            default_value='LQR',
             description='Filename'
         ),
         DeclareLaunchArgument(
